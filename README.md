@@ -1,34 +1,29 @@
 # @theaiinc/yggdrasil — Distributed Runner Orchestration
 
-Yggdrasil is the orchestration controller that receives runner registrations and heartbeats from [Ratatoskr](https://github.com/theaiinc/yggdrasil-ratatoskr) daemons.
+Yggdrasil is the orchestration controller that receives runner registrations and heartbeats from [Ratatoskr](https://github.com/theaiinc/yggdrasil-ratatoskr) daemons. Ratatoskr runs alongside each runner (any machine, anywhere) and keeps Yggdrasil informed of its availability.
 
 ## Architecture
 
 ```
 ┌────────────────────────────────────────────┐
-│              Load Balancer                 │
-│              (Nginx / optional)             │
-└────────────────┬───────────────────────────┘
-                 │
-                 ▼
-┌────────────────────────────────────────────┐
 │         Orchestration Controller           │
 │         (Node.js / Express)                │
 │                                            │
-│  • POST /runners/register                  │
-│  • POST /runners/heartbeat                 │
-│  • POST /runners/update                    │
-│  • POST /runners/offline                   │
-│  • GET  /api/runners                       │
-│  • GET  /health                            │
-│  • GET  /metrics                           │
-└────┬───────────────────────┬───────────────┘
+│  • POST /runners/register                 │
+│  • POST /runners/heartbeat                │
+│  • POST /runners/update                   │
+│  • POST /runners/offline                  │
+│  • GET  /api/runners                      │
+│  • GET  /health                           │
+│  • GET  /metrics                          │
+└────┬───────────────────────┬──────────────┘
      │                       │
      ▼                       ▼
 ┌──────────┐        ┌──────────────────┐
 │ Ratatoskr│        │    Monitoring    │
 │ Daemon   │        │  (Prometheus +   │
-│          │        │    Grafana)      │
+│ (per     │        │    Grafana)      │
+│  runner) │        │                  │
 └──────────┘        └──────────────────┘
 ```
 
@@ -43,11 +38,20 @@ Yggdrasil tracks runner state via lease-based offline detection — if a heartbe
 ## Quick Start
 
 ```bash
-# Build and start
+# Build and start the full stack
 docker compose up --build
 
 # Yggdrasil API is at http://localhost:3000
 curl http://localhost:3000/health
+```
+
+### Run Ratatoskr on another machine
+
+```bash
+# On any machine with Node.js:
+YGGDRASIL_URL=https://your-yggdrasil-server.com:3000 \
+API_KEY=your-api-key \
+npx @theaiinc/yggdrasil-ratatoskr
 ```
 
 ## API Key Authentication
@@ -57,6 +61,17 @@ Set `API_KEYS` environment variable (comma-separated). All endpoints except `/he
 ```bash
 API_KEYS=my-secret-key docker compose up
 curl -H "X-API-Key: my-secret-key" http://localhost:3000/api/runners
+```
+
+## Configuration via `.env`
+
+```env
+# Yggdrasil API key for Ratatoskr authentication
+YGGDRASIL_API_KEY=my-secret-key
+
+# Yggdrasil server URL for Ratatoskr to register against.
+# Can be local or remote over the internet.
+YGGDRASIL_URL=http://localhost:3000
 ```
 
 ## Packages

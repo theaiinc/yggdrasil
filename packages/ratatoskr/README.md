@@ -2,7 +2,7 @@
 
 Lightweight discovery and heartbeat daemon for Yggdrasil runner registration.
 
-Ratatoskr runs alongside an agent runner and continuously informs Yggdrasil about:
+Ratatoskr runs alongside an agent runner (any machine, anywhere) and continuously informs Yggdrasil about:
 
 - Runner availability
 - Network endpoints
@@ -23,13 +23,26 @@ npm install @theaiinc/yggdrasil-ratatoskr
 import { Ratatoskr } from '@theaiinc/yggdrasil-ratatoskr';
 
 const ratatoskr = new Ratatoskr({
-  yggdrasilUrl: 'http://localhost:4000',
+  yggdrasilUrl: 'http://localhost:3000',
+  apiKey: 'my-api-key',  // required if Yggdrasil has API_KEYS set
 });
 
 await ratatoskr.start();
 ```
 
 Within seconds, Yggdrasil automatically knows that the runner exists, where it lives, what it can do, and whether it is healthy.
+
+### Running via CLI (no TypeScript needed)
+
+```bash
+YGGDRASIL_URL=http://localhost:3000 \
+API_KEY=my-api-key \
+RUNNER_NAME=my-laptop \
+CAPABILITIES=http,health,browser \
+npx @theaiinc/yggdrasil-ratatoskr
+```
+
+The `YGGDRASIL_URL` can point to a remote Yggdrasil over the internet — Ratatoskr connects outbound.
 
 ## Advanced Usage
 
@@ -39,19 +52,15 @@ import { Ratatoskr } from '@theaiinc/yggdrasil-ratatoskr';
 const ratatoskr = new Ratatoskr({
   runnerId: 'runner-a',
   name: 'MacBook Pro',
-  yggdrasilUrl: 'http://yggdrasil.prod:4000',
+  yggdrasilUrl: 'https://yggdrasil.mycompany.com',
+  apiKey: process.env['YGGDRASIL_API_KEY'],
   capabilities: ['browser', 'computer-use', 'llm'],
-  heartbeatInterval: 30,
-  leaseTtl: 60,
+  heartbeatInterval: 15,
+  leaseTtl: 45,
+  detectLocalIp: true,
   detectPublicIp: false,
-  endpointProvider: async () => {
-    return 'http://192.168.1.5:8080';
-  },
-  healthProvider: async () => {
-    return {
-      status: 'healthy',
-    };
-  },
+  endpointProvider: async () => 'http://192.168.1.5:8080',
+  healthProvider: async () => ({ status: 'healthy' }),
 });
 
 await ratatoskr.start();
@@ -63,7 +72,8 @@ await ratatoskr.start();
 |--------|------|---------|-------------|
 | `runnerId` | `string` | Auto-generated | Unique runner identifier |
 | `name` | `string` | `'unknown'` | Human-readable runner name |
-| `yggdrasilUrl` | `string` | (required) | Yggdrasil server URL |
+| `yggdrasilUrl` | `string` | (required) | Yggdrasil server URL (local or remote) |
+| `apiKey` | `string` | `''` | API key for Yggdrasil auth |
 | `capabilities` | `string[]` | `[]` | List of runner capabilities |
 | `heartbeatInterval` | `number` | `30` | Heartbeat interval in seconds |
 | `leaseTtl` | `number` | `60` | Lease TTL in seconds |
@@ -74,15 +84,25 @@ await ratatoskr.start();
 | `labels` | `Record<string, string>` | `{}` | Additional labels |
 | `metadata` | `Record<string, unknown>` | `{}` | Additional metadata |
 
+## Environment Variables (for CLI runner)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `YGGDRASIL_URL` | `http://orchestration-controller:3000` | Yggdrasil server URL |
+| `API_KEY` | `''` | API key for authentication |
+| `RUNNER_NAME` | `ratatoskr-<hostname>` | Human-readable runner name |
+| `CAPABILITIES` | `http,health` | Comma-separated capabilities |
+
 ## Architecture
 
 ```
 yggdrasil-ratatoskr
 │
-├── ratatoskr.ts          # Main entry point
-├── types/                # TypeScript interfaces and enums
-├── transports/           # Transport abstraction (HTTP, WebSocket, etc.)
-│   └── http-transport.ts # HTTP transport implementation
+├── runner.ts              # CLI entrypoint (reads env vars)
+├── ratatoskr.ts           # Main daemon class
+├── types/                 # TypeScript interfaces and enums
+├── transports/            # Transport abstraction (HTTP)
+│   └── http-transport.ts  # HTTP transport with API key support
 └── services/
     ├── registrar.ts           # Runner registration lifecycle
     ├── heartbeat-sender.ts    # Periodic heartbeat sender
@@ -95,8 +115,8 @@ yggdrasil-ratatoskr
 ## How It Works
 
 1. **`ratatoskr.start()`** — Registers the runner with Yggdrasil, begins heartbeats, starts monitoring IP and lease expiry, and registers shutdown handlers.
-2. **Heartbeats** — Sent every 30 seconds (configurable) to confirm the runner is alive.
-3. **Lease** — Each registration has a 60-second TTL. If Yggdrasil misses 2 heartbeats (~60s), the runner is marked `offline`.
+2. **Heartbeats** — Sent every N seconds (configurable) to confirm the runner is alive.
+3. **Lease** — Each registration has a TTL. If Yggdrasil misses enough heartbeats, the runner is marked `offline`.
 4. **IP Changes** — Detected every 10 seconds; if the local IP changes, Yggdrasil is notified via `POST /runners/update`.
 5. **Graceful Shutdown** — On SIGTERM/SIGINT, Ratatoskr deregisters the runner with `POST /runners/offline`.
 

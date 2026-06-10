@@ -1,100 +1,85 @@
-# Technical Proposal
+# Technical Proposal — Ratatoskr-Based Runner Discovery
 
 ## 1. Overview
 
-We will implement a distributed orchestration system consisting of:
+Yggdrasil is a distributed orchestration system for managing remote runner machines. Each runner runs a Ratatoskr daemon that continuously registers itself with Yggdrasil via heartbeat.
 
-- **Single Orchestration Controller**: manages workflow, issues requests to agents.
-- **Agent Containers**: perform tasks, auto-scaled via Cloud Run.
-- **Local Simulation**: replicate runtime and autoscaling behavior on local/dev setups.
+Key design decisions:
+- **Ratatoskr is client-side**: it runs on each runner machine and connects *outbound* to Yggdrasil. Runners can be anywhere — local Docker containers, laptops, cloud VMs, or edge devices.
+- **Yggdrasil is the server**: it receives registrations, tracks liveness via lease-based offline detection, and exposes an API to query available runners.
+- **Pull model**: Yggdrasil does not probe runners. Runners push their state via heartbeats instead.
 
-This setup ensures reliability, resource control, and consistency across environments.
+## 2. Architecture
 
----
+```
+┌─────────────────────────────────┐
+│        Yggdrasil Server         │
+│  (Node.js / Express)            │
+│                                 │
+│  POST /runners/register         │
+│  POST /runners/heartbeat        │
+│  POST /runners/update           │
+│  POST /runners/offline          │
+│  GET  /api/runners              │
+│  GET  /health                   │
+│  GET  /metrics                  │
+└──────────┬──────────────────────┘
+           │
+    ┌──────┴──────┐
+    │  Internet   │
+    └──────┬──────┘
+           │
+    ┌──────┴───────────────┐
+    │  Ratatoskr Daemon    │  ← runs on each runner machine
+    │  (registration,      │
+    │   heartbeat,         │
+    │   health,            │
+    │   endpoint detect)   │
+    └──────────────────────┘
+```
 
-## 2. Cloud Run Configuration
+### Key properties
 
-### 🧩 Concurrency & Auto‑Scaling
+| Property | Detail |
+|----------|--------|
+| **Transport** | HTTP(S) — Ratatoskr connects *outbound* to Yggdrasil |
+| **Auth** | API key via `X-API-Key` header |
+| **Liveness** | Lease-based: heartbeats renew a TTL; missing heartbeats → offline |
+| **Scaling** | Any number of runners register independently |
+| **Network** | No inbound ports needed on runners; works across NAT/firewalls |
 
-- Set `maxConcurrency` (default 80) or adjustable down to 1 for thread-unsafe or heavy workloads.
-- Autoscaler monitors concurrency & CPU utilization, launching new instances ahead of CPU bottlenecks.
-- Configure `minInstances` to reduce cold-starts and `maxInstances` to cap resource use.
+## 3. Ratatoskr Lifecycle
 
-### 🚦 Request Handling
+1. **Startup**: Registers runner metadata (ID, name, endpoint, capabilities) via `POST /runners/register`
+2. **Heartbeat**: Sends health status every N seconds via `POST /runners/heartbeat`
+3. **IP Change**: Detects endpoint changes every 10s, notifies via `POST /runners/update`
+4. **Lease Check**: Re-registers if lease expires (e.g. Yggdrasil restarted)
+5. **Shutdown**: Deregisters via `POST /runners/offline` on SIGTERM/SIGINT
 
-- New requests arriving when an instance is at capacity are **queued** (for ~10 s + startup time).
-- If capacity becomes available or a new instance launches, queued requests are served.
-- If limits are hit, HTTP 429s are returned—handled by orchestration logic.
+## 4. Yggdrasil Server Behavior
 
-### 🗂 Session Affinity
+| Function | Implementation |
+|----------|---------------|
+| Runner tracking | In-memory `Map<string, RunnerInfo>` |
+| Offline detection | Polls every 10s, marks runners offline if `now - lastHeartbeat > LEASE_TTL_MS` |
+| Metrics | Prometheus scrape at `/metrics` (runner count, online/offline) |
+| Auth | API key middleware on all routes except `/health` and `/metrics` |
 
-- Optional stickiness via session affinity ensures repeated calls from the same client go to the same instance, useful for stateful workflows.
+## 5. Monitoring
 
----
+Prometheus scrapes Yggdrasil's `/metrics` endpoint. Available metrics:
 
-## 3. Local Simulation Strategy
+- `yggdrasil_runners_total` — total registered runners
+- `yggdrasil_runners_online` — currently online runners
+- `yggdrasil_runners_offline` — offline runners
+- `yggdrasil_uptime_seconds` — server uptime
 
-Since Cloud Run’s autoscaler isn’t available locally, we replicate its behavior:
+Grafana can be used to visualize these metrics.
 
-### Step-by-Step Workflow
+## 6. Next Steps
 
-1. **Run Agent Container Locally**
-   - Via Docker (e.g., `docker run -p 9090:8080 …`) or `gcloud beta code dev` to simulate Cloud Run flags.
-2. **Define Resource Limits & Concurrency**
-   - Enforce CPU/memory caps in Docker.
-   - Use emulator concurrency settings to mimic Cloud Run.
-3. **Load-testing**
-   - Use tools (e.g., `hey`, `wrk`) to generate concurrent requests up to capacity.
-4. **Manual Instance Simulation**
-   - Launch additional local containers to simulate scaling.
-   - Route new requests to these instances via a simple local load-balancer or round-robin script.
-5. **Retry / 429 Handling**
-   - Force a 429 once capacity is reached; observe orchestration controller within app retrying or redirecting requests.
-
----
-
-## 4. Orchestration Controller Behavior
-
-- **Queuing & Retrying**: If a 429 or timeout is returned, controller retries with back-off or redirects to another instance.
-- **Fail-fast / Circuit Breaker**: After configurable retries, mark agent as unhealthy and log alerts.
-- **Health Checks**: Periodically call `/health` endpoint to detect instance readiness and ensure proper request distribution.
-- **Session Affinity Awareness**: Route to same agent when adjacency/memory locality is required.
-
----
-
-## 5. Monitoring & Metrics
-
-We’ll track:
-
-- **Concurrent request rate** per agent instance.
-- **CPU and memory utilization** against thresholds.
-- **Queue depth**, **cold-start counts**, and **429/timeout rates**.
-- **Retry success rate** and **latency profiles**.
-
-These inform tuning of `min/maxInstances`, `maxConcurrency`, and retry/back-off strategies.
-
----
-
-## 6. Summary Table
-
-| Concern                     | Cloud Run Behavior                                | Local Simulation Strategy                                 |
-| --------------------------- | ------------------------------------------------- | --------------------------------------------------------- |
-| Resource control            | Set `maxConcurrency`, `min/maxInstances`          | Limit Docker containers, tune CPU/mem flags               |
-| Autoscaling                 | Auto‑spawn instances on CPU/concurrency threshold | Manually start new containers, simulate load-balancing    |
-| Queuing & overflow          | Queued for ~10s + startup; 429 on spillover       | Simulate queue + force 429s                               |
-| Cold‑starts                 | Reduced by `minInstances`                         | Pre-launch containers to mimic warm state                 |
-| Retry/back-off              | Controller retries on 429/timeout                 | Observe controller behavior under load simulation         |
-| Session affinity (optional) | Cloud Run stickiness based on session affinity    | Local routing logic keeps same container for repeat calls |
-
----
-
-## 7. Next Steps
-
-1. **Prototype** local simulation: a Docker stack with multiple agent containers and load-generator.
-2. **Record metrics** and tune threshold configurations.
-3. **Deploy to Cloud Run** using locally-tested parameters.
-4. **Monitor in production**, adjust as needed.
-
----
-
-Let me know if you'd like me to add diagrams, specific scripts, or detailed metric dashboard examples!
+1. **Deploy Yggdrasil** to a publicly accessible server
+2. **Run Ratatoskr** on target machines (laptops, VMs, Docker)
+3. **Connect to Yggdrasil programmatically** via `GET /api/runners` to discover available runners
+4. **Add TLS** for production (reverse proxy with nginx/caddy)
+5. **Add persistent storage** for runner state across Yggdrasil restarts
