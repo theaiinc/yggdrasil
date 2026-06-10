@@ -236,7 +236,7 @@ setInterval(() => {
 // ─── Start server ───────────────────────────────────────────────
 
 const PORT = parseInt(process.env['PORT'] || '3000', 10);
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   logger.info('Orchestration controller started (runner-only mode via Ratatoskr)', {
     port: PORT,
     environment: process.env['NODE_ENV'] || 'development',

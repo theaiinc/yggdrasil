@@ -1,6 +1,6 @@
 {
   "name": "@theaiinc/yggdrasil-ratatoskr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lightweight discovery and heartbeat daemon for Yggdrasil runner registration",
   "author": "The AI Inc",
   "license": "MIT",
