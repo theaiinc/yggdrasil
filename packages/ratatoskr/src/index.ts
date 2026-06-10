@@ -8,6 +8,9 @@ export { LeaseManager } from './services/lease-manager.js';
 export { Registrar } from './services/registrar.js';
 export { RetryManager } from './services/retry-manager.js';
 
+export { ResourceCollector } from './services/resource-collector.js';
+export { TaskExecutor } from './services/task-executor.js';
+
 // Export types
 export type { Transport } from './types/index.js';
 export type {
@@ -18,6 +21,10 @@ export type {
   EndpointUpdatePayload,
   DeregisterPayload,
   HealthResult,
+  SystemResources,
+  RunnerTask,
+  TaskHandler,
+  TaskExecutorConfig,
 } from './types/index.js';
 
 // Export enum

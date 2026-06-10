@@ -8,7 +8,24 @@ import { nanoid } from 'nanoid';
 const app = express();
 const logger = getLogger();
 
-// ─── Runner types ───────────────────────────────────────────────
+// ─── Runner & task types ─────────────────────────────────────────
+
+interface SystemResources {
+  cpu: {
+    load1: number;
+    load5: number;
+    load15: number;
+    cpus: number;
+    percent: number;
+  };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    percent: number;
+  };
+  uptime: number;
+}
 
 interface RunnerInfo {
   runnerId: string;
@@ -19,6 +36,18 @@ interface RunnerInfo {
   labels: Record<string, string>;
   lastHeartbeat: Date;
   status: 'online' | 'offline';
+  resources?: SystemResources;
+  tasks: RunnerTask[];
+}
+
+interface RunnerTask {
+  taskId: string;
+  type: string;
+  status: 'running' | 'completed' | 'failed';
+  startedAt: number;
+  completedAt?: number;
+  correlationId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 const runners = new Map<string, RunnerInfo>();
@@ -100,7 +129,27 @@ app.get('/metrics', (_req, res) => {
     '# HELP yggdrasil_uptime_seconds Server uptime in seconds',
     '# TYPE yggdrasil_uptime_seconds counter',
     `yggdrasil_uptime_seconds ${process.uptime()}`,
+    '# HELP yggdrasil_tasks_running Number of currently running tasks across all runners',
+    '# TYPE yggdrasil_tasks_running gauge',
+    `yggdrasil_tasks_running ${Array.from(runners.values()).reduce((sum, r) => sum + r.tasks.filter(t => t.status === 'running').length, 0)}`,
   ];
+
+  // Per-runner resource metrics
+  for (const [id, runner] of runners.entries()) {
+    if (runner.resources && runner.status === 'online') {
+      const labels = `runner="${id}",name="${runner.name}"`;
+      metrics.push(`# HELP yggdrasil_runner_cpu_percent CPU usage percent per runner`);
+      metrics.push(`# TYPE yggdrasil_runner_cpu_percent gauge`);
+      metrics.push(`yggdrasil_runner_cpu_percent{${labels}} ${runner.resources.cpu.percent}`);
+      metrics.push(`# HELP yggdrasil_runner_memory_percent Memory usage percent per runner`);
+      metrics.push(`# TYPE yggdrasil_runner_memory_percent gauge`);
+      metrics.push(`yggdrasil_runner_memory_percent{${labels}} ${runner.resources.memory.percent}`);
+      metrics.push(`# HELP yggdrasil_runner_memory_used_bytes Memory used bytes per runner`);
+      metrics.push(`# TYPE yggdrasil_runner_memory_used_bytes gauge`);
+      metrics.push(`yggdrasil_runner_memory_used_bytes{${labels}} ${runner.resources.memory.used}`);
+    }
+  }
+
   res.set('Content-Type', 'text/plain; charset=utf-8');
   res.send(metrics.join('\n') + '\n');
 });
@@ -116,6 +165,8 @@ app.post('/runners/register', (req, res) => {
     capabilities?: string[];
     labels?: Record<string, string>;
     metadata?: Record<string, unknown>;
+    resources?: SystemResources;
+    tasks?: RunnerTask[];
   };
 
   const runnerId = body.runnerId || nanoid();
@@ -128,6 +179,8 @@ app.post('/runners/register', (req, res) => {
     labels: body.labels || {},
     lastHeartbeat: new Date(),
     status: 'online',
+    ...(body.resources ? { resources: body.resources } : {}),
+    tasks: body.tasks || [],
   });
 
   logger.info('Runner registered', { runnerId, name: body.name, endpoint: body.endpoint });
@@ -135,7 +188,13 @@ app.post('/runners/register', (req, res) => {
 });
 
 app.post('/runners/heartbeat', (req, res) => {
-  const body = req.body as { runnerId?: string; timestamp?: number; status?: string };
+  const body = req.body as {
+    runnerId?: string;
+    timestamp?: number;
+    status?: string;
+    resources?: SystemResources;
+    tasks?: RunnerTask[];
+  };
   const runnerId = body.runnerId;
   if (!runnerId || !runners.has(runnerId)) {
     res.status(404).json({ error: 'Runner not found' });
@@ -145,6 +204,12 @@ app.post('/runners/heartbeat', (req, res) => {
   const runner = runners.get(runnerId)!;
   runner.lastHeartbeat = new Date();
   runner.status = 'online';
+  if (body.resources) {
+    runner.resources = body.resources;
+  }
+  if (body.tasks) {
+    runner.tasks = body.tasks;
+  }
 
   logger.debug('Runner heartbeat received', { runnerId });
   res.json({ status: 'ok' });
@@ -179,6 +244,81 @@ app.post('/runners/offline', (req, res) => {
   res.json({ status: 'offline' });
 });
 
+// ─── Task management ────────────────────────────────────────────
+
+app.post('/runners/:runnerId/tasks', (req, res) => {
+  const runner = runners.get(req.params.runnerId);
+  if (!runner) {
+    res.status(404).json({ error: 'Runner not found' });
+    return;
+  }
+
+  const body = req.body as {
+    taskId?: string;
+    type: string;
+    status?: 'running' | 'completed' | 'failed';
+    correlationId?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const task: RunnerTask = {
+    taskId: body.taskId || `task-${nanoid(8)}`,
+    type: body.type,
+    status: body.status || 'running',
+    startedAt: Date.now(),
+    ...(body.correlationId ? { correlationId: body.correlationId } : {}),
+    ...(body.metadata ? { metadata: body.metadata } : {}),
+  };
+
+  runner.tasks.push(task);
+  logger.info('Task created on runner', { runnerId: runner.runnerId, taskId: task.taskId, type: task.type });
+  res.status(201).json(task);
+});
+
+app.patch('/runners/:runnerId/tasks/:taskId', (req, res) => {
+  const runner = runners.get(req.params.runnerId);
+  if (!runner) {
+    res.status(404).json({ error: 'Runner not found' });
+    return;
+  }
+
+  const task = runner.tasks.find(t => t.taskId === req.params.taskId);
+  if (!task) {
+    res.status(404).json({ error: 'Task not found' });
+    return;
+  }
+
+  const body = req.body as { status?: 'running' | 'completed' | 'failed'; metadata?: Record<string, unknown> };
+  if (body.status) {
+    task.status = body.status;
+    if (body.status === 'completed' || body.status === 'failed') {
+      task.completedAt = Date.now();
+    }
+  }
+  if (body.metadata) {
+    task.metadata = { ...task.metadata, ...body.metadata };
+  }
+
+  logger.info('Task updated', { runnerId: runner.runnerId, taskId: task.taskId, status: task.status });
+  res.json(task);
+});
+
+app.get('/runners/:runnerId/tasks', (req, res) => {
+  const runner = runners.get(req.params.runnerId);
+  if (!runner) {
+    res.status(404).json({ error: 'Runner not found' });
+    return;
+  }
+
+  const { status } = req.query;
+  let tasks = runner.tasks;
+  if (status) {
+    tasks = tasks.filter(t => t.status === status);
+  }
+
+  res.json({ runnerId: runner.runnerId, tasks, count: tasks.length });
+});
+
 // ─── Runner queries ─────────────────────────────────────────────
 
 app.get('/api/runners', (_req, res) => {
@@ -192,6 +332,8 @@ app.get('/api/runners', (_req, res) => {
       labels: r.labels,
       status: r.status,
       lastHeartbeat: r.lastHeartbeat,
+      resources: r.resources,
+      tasks: r.tasks,
     })),
     count: runners.size,
   });

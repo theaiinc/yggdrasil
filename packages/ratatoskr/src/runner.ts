@@ -15,20 +15,28 @@ const capabilities = (process.env['CAPABILITIES'] || 'http,health')
   .map(c => c.trim())
   .filter(c => c !== '');
 
+const taskPollInterval = parseInt(process.env['TASK_POLL_INTERVAL'] || '10', 10);
+const taskTypes = (process.env['TASK_TYPES'] || '')
+  .split(',')
+  .map(t => t.trim())
+  .filter(t => t !== '');
+
 const ratatoskr = new Ratatoskr({
   yggdrasilUrl,
   ...(apiKey ? { apiKey } : {}),
   name: runnerName,
-  capabilities,
+  capabilities: [...capabilities, ...(taskTypes.length > 0 ? ['task-executor'] : [])],
   heartbeatInterval: 15,
   leaseTtl: 45,
+  taskPollInterval,
   detectLocalIp: true,
   detectPublicIp: false,
 });
 
 ratatoskr.start()
   .then(() => {
-    console.log(`[Ratatoskr] Started — runner: ${ratatoskr.getState().runnerId}, yggdrasil: ${yggdrasilUrl}`);
+    const extra = taskTypes.length > 0 ? `, task types: ${taskTypes.join(', ')}` : '';
+    console.log(`[Ratatoskr] Started — runner: ${ratatoskr.getState().runnerId}, yggdrasil: ${yggdrasilUrl}${extra}`);
   })
   .catch((err) => {
     console.error('[Ratatoskr] Failed to start:', err);

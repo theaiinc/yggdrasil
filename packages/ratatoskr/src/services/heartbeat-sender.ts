@@ -2,6 +2,7 @@ import { RunnerHealth, type HeartbeatPayload } from '../types/index.js';
 import type { HealthMonitor } from './health-monitor.js';
 import type { Transport } from '../transports/transport.js';
 import type { RetryManager } from './retry-manager.js';
+import type { ResourceCollector } from './resource-collector.js';
 
 /**
  * Heartbeat sender that periodically sends health status to Yggdrasil.
@@ -10,6 +11,7 @@ export class HeartbeatSender {
   private readonly transport: Transport;
   private readonly healthMonitor: HealthMonitor;
   private readonly retryManager: RetryManager;
+  private readonly resourceCollector: ResourceCollector;
   private readonly runnerId: string;
   private readonly intervalMs: number;
   private timerId: ReturnType<typeof setInterval> | undefined;
@@ -19,12 +21,14 @@ export class HeartbeatSender {
     transport: Transport,
     healthMonitor: HealthMonitor,
     retryManager: RetryManager,
+    resourceCollector: ResourceCollector,
     runnerId: string,
     intervalSeconds: number = 30,
   ) {
     this.transport = transport;
     this.healthMonitor = healthMonitor;
     this.retryManager = retryManager;
+    this.resourceCollector = resourceCollector;
     this.runnerId = runnerId;
     this.intervalMs = intervalSeconds * 1000;
   }
@@ -59,11 +63,13 @@ export class HeartbeatSender {
    */
   private async sendHeartbeat(): Promise<void> {
     const health = await this.healthMonitor.check();
+    const resources = await this.resourceCollector.collect();
 
     const payload: HeartbeatPayload = {
       runnerId: this.runnerId,
       timestamp: Math.floor(Date.now() / 1000),
       status: health.status,
+      resources,
     };
 
     try {

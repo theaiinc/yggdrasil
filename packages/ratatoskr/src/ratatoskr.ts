@@ -4,6 +4,7 @@ import type {
   RatatoskrConfig,
   RatatoskrState,
   HealthResult,
+  TaskHandler,
 } from './types/index.js';
 import { RunnerHealth } from './types/index.js';
 import { HttpTransport } from './transports/http-transport.js';
@@ -13,7 +14,9 @@ import { HealthMonitor } from './services/health-monitor.js';
 import { HeartbeatSender } from './services/heartbeat-sender.js';
 import { LeaseManager } from './services/lease-manager.js';
 import { Registrar } from './services/registrar.js';
+import { ResourceCollector } from './services/resource-collector.js';
 import { RetryManager } from './services/retry-manager.js';
+import { TaskExecutor } from './services/task-executor.js';
 
 /**
  * Ratatoskr — Lightweight discovery and heartbeat daemon.
@@ -32,6 +35,8 @@ export class Ratatoskr {
   private readonly retryManager: RetryManager;
   private readonly registrar: Registrar;
   private readonly heartbeatSender: HeartbeatSender;
+  private readonly resourceCollector: ResourceCollector;
+  private readonly taskExecutor: TaskExecutor | undefined;
   private endpointCheckTimer: ReturnType<typeof setInterval> | undefined;
   private leaseCheckTimer: ReturnType<typeof setInterval> | undefined;
   private shutdownHandlers: (() => void)[] = [];
@@ -55,6 +60,7 @@ export class Ratatoskr {
       this.healthMonitor.setHealthProvider(config.healthProvider);
     }
 
+    this.resourceCollector = new ResourceCollector();
     this.leaseManager = new LeaseManager(this.config.leaseTtl);
     this.retryManager = new RetryManager();
 
@@ -63,6 +69,7 @@ export class Ratatoskr {
       this.endpointDetector,
       this.retryManager,
       this.leaseManager,
+      this.resourceCollector,
       this.state.runnerId,
       this.state.runnerName,
       this.config.capabilities,
@@ -74,9 +81,21 @@ export class Ratatoskr {
       this.transport,
       this.healthMonitor,
       this.retryManager,
+      this.resourceCollector,
       this.state.runnerId,
       this.config.heartbeatInterval,
     );
+
+    // Initialize TaskExecutor if enabled
+    if (this.config.taskPollInterval > 0) {
+      this.taskExecutor = new TaskExecutor(this.transport, {
+        runnerId: this.state.runnerId,
+        pollInterval: this.config.taskPollInterval,
+        handlers: this.config.taskHandlers,
+      });
+    } else {
+      this.taskExecutor = undefined;
+    }
   }
 
   /**
@@ -113,7 +132,12 @@ export class Ratatoskr {
       this.registrar.renewIfNeeded();
     }, 5_000);
 
-    // 5. Register shutdown handlers
+    // 5. Start task execution polling (if enabled)
+    if (this.taskExecutor) {
+      this.taskExecutor.start();
+    }
+
+    // 6. Register shutdown handlers
     this.registerShutdownHandlers();
   }
 
@@ -137,6 +161,11 @@ export class Ratatoskr {
 
     // Stop heartbeats
     this.heartbeatSender.stop();
+
+    // Stop task execution
+    if (this.taskExecutor) {
+      this.taskExecutor.stop();
+    }
 
     // Deregister from Yggdrasil
     await this.registrar.deregister();
@@ -209,6 +238,8 @@ export class Ratatoskr {
       capabilities: config.capabilities ?? [],
       heartbeatInterval: config.heartbeatInterval ?? 30,
       leaseTtl: config.leaseTtl ?? 60,
+      taskPollInterval: config.taskPollInterval ?? 10,
+      taskHandlers: config.taskHandlers ?? {},
       endpointProvider: config.endpointProvider ?? (() => Promise.resolve('')),
       healthProvider: config.healthProvider ?? (() =>
         Promise.resolve({ status: RunnerHealth.HEALTHY })),

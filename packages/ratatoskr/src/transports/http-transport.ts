@@ -6,6 +6,7 @@ import type {
   HeartbeatPayload,
   EndpointUpdatePayload,
   DeregisterPayload,
+  RunnerTask,
 } from '../types/index.js';
 
 /**
@@ -62,5 +63,27 @@ export class HttpTransport implements Transport {
    */
   async deregister(payload: DeregisterPayload): Promise<void> {
     await this.client.post('/runners/offline', payload);
+  }
+
+  /**
+   * Fetch tasks for a runner, optionally filtered by status.
+   */
+  async fetchTasks(runnerId: string, status?: string): Promise<RunnerTask[]> {
+    const path = status
+      ? `/runners/${runnerId}/tasks?status=${encodeURIComponent(status)}`
+      : `/runners/${runnerId}/tasks`;
+    const res = await this.client.get<{ tasks: RunnerTask[] }>(path);
+    return res.data.tasks;
+  }
+
+  /**
+   * Update a task's status and metadata.
+   */
+  async updateTask(
+    runnerId: string,
+    taskId: string,
+    update: { status?: 'running' | 'completed' | 'failed'; metadata?: Record<string, unknown> },
+  ): Promise<void> {
+    await this.client.patch(`/runners/${runnerId}/tasks/${taskId}`, update);
   }
 }

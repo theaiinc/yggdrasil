@@ -3,6 +3,7 @@ import type { Transport } from '../transports/transport.js';
 import type { EndpointDetector } from './endpoint-detector.js';
 import type { RetryManager } from './retry-manager.js';
 import type { LeaseManager } from './lease-manager.js';
+import type { ResourceCollector } from './resource-collector.js';
 
 /**
  * Registrar handles runner registration and re-registration with Yggdrasil.
@@ -15,6 +16,7 @@ export class Registrar {
   private readonly endpointDetector: EndpointDetector;
   private readonly retryManager: RetryManager;
   private readonly leaseManager: LeaseManager;
+  private readonly resourceCollector: ResourceCollector;
   private readonly runnerId: string;
   private readonly runnerName: string;
   private readonly version: string;
@@ -28,6 +30,7 @@ export class Registrar {
     endpointDetector: EndpointDetector,
     retryManager: RetryManager,
     leaseManager: LeaseManager,
+    resourceCollector: ResourceCollector,
     runnerId: string,
     runnerName: string,
     capabilities: string[],
@@ -38,6 +41,7 @@ export class Registrar {
     this.endpointDetector = endpointDetector;
     this.retryManager = retryManager;
     this.leaseManager = leaseManager;
+    this.resourceCollector = resourceCollector;
     this.runnerId = runnerId;
     this.runnerName = runnerName;
     this.version = '0.1.0';
@@ -53,6 +57,7 @@ export class Registrar {
    */
   async register(): Promise<void> {
     const endpoint = this.endpointDetector.getCurrentEndpoint();
+    const resources = await this.resourceCollector.collect();
 
     const payload: RunnerRegistration = {
       runnerId: this.runnerId,
@@ -60,6 +65,7 @@ export class Registrar {
       endpoint,
       version: this.version,
       capabilities: this.capabilities,
+      resources,
       ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
       ...(Object.keys(this.metadata).length > 0 ? { metadata: this.metadata } : {}),
     };

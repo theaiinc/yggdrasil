@@ -1,4 +1,38 @@
 /**
+ * System resources reported by a runner.
+ */
+export interface SystemResources {
+  cpu: {
+    load1: number;
+    load5: number;
+    load15: number;
+    cpus: number;
+    percent: number;
+  };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    percent: number;
+  };
+  uptime: number;
+}
+
+/**
+ * A task being executed or tracked on a runner.
+ */
+export interface RunnerTask {
+  taskId: string;
+  type: string;
+  status: 'running' | 'completed' | 'failed';
+  startedAt: number;
+  completedAt?: number;
+  /** Correlation ID for tracing tasks across distributed workflows. */
+  correlationId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
  * Enum representing the health state of a runner.
  */
 export enum RunnerHealth {
@@ -18,6 +52,8 @@ export interface RunnerRegistration {
   capabilities: string[];
   labels?: Record<string, string>;
   metadata?: Record<string, unknown>;
+  resources?: SystemResources;
+  tasks?: RunnerTask[];
 }
 
 /**
@@ -27,6 +63,8 @@ export interface HeartbeatPayload {
   runnerId: string;
   timestamp: number;
   status: RunnerHealth;
+  resources?: SystemResources;
+  tasks?: RunnerTask[];
 }
 
 /**
@@ -71,6 +109,10 @@ export interface RatatoskrConfig {
   heartbeatInterval?: number;
   /** Lease TTL in seconds (default: 60). */
   leaseTtl?: number;
+  /** Task poll interval in seconds. Set to 0 to disable task execution (default: 10). */
+  taskPollInterval?: number;
+  /** Custom task handlers keyed by task type (e.g. { echo, exec, http } built-in). */
+  taskHandlers?: Record<string, TaskHandler>;
   /** Custom endpoint provider for advanced endpoint detection. */
   endpointProvider?: () => Promise<string>;
   /** Custom health provider for advanced health checks. */
@@ -97,6 +139,31 @@ export interface Transport {
   update(payload: EndpointUpdatePayload): Promise<void>;
   /** Deregister the runner. */
   deregister(payload: DeregisterPayload): Promise<void>;
+  /** Fetch pending (running) tasks for a runner. */
+  fetchTasks(runnerId: string, status?: string): Promise<RunnerTask[]>;
+  /** Update a task's status and metadata. */
+  updateTask(runnerId: string, taskId: string, update: { status?: 'running' | 'completed' | 'failed'; metadata?: Record<string, unknown> }): Promise<void>;
+}
+
+/**
+ * Signature for a custom task handler function.
+ * Receives the task and returns the outcome (status + result metadata).
+ */
+export type TaskHandler = (task: RunnerTask) => Promise<{
+  status: 'completed' | 'failed';
+  metadata?: Record<string, unknown>;
+}>;
+
+/**
+ * Configuration for the TaskExecutor.
+ */
+export interface TaskExecutorConfig {
+  /** Runner ID used to identify this runner when polling. */
+  runnerId: string;
+  /** Poll interval in seconds (default: 10). */
+  pollInterval?: number;
+  /** Custom task handlers keyed by task type. */
+  handlers?: Record<string, TaskHandler>;
 }
 
 /**

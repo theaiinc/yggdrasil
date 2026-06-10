@@ -4,13 +4,13 @@
   "tags": ["yggdrasil", "runners"],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
   "panels": [
     {
       "title": "Total Runners",
       "type": "stat",
-      "gridPos": { "h": 8, "w": 4, "x": 0, "y": 0 },
+      "gridPos": { "h": 6, "w": 3, "x": 0, "y": 0 },
       "id": 1,
       "options": {
         "colorMode": "background",
@@ -22,7 +22,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "fixed" },
+          "color": { "mode": "fixed", "fixedColor": "blue" },
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
           "unit": "none"
@@ -37,9 +37,9 @@
       ]
     },
     {
-      "title": "Online Runners",
+      "title": "Online",
       "type": "stat",
-      "gridPos": { "h": 8, "w": 4, "x": 4, "y": 0 },
+      "gridPos": { "h": 6, "w": 3, "x": 3, "y": 0 },
       "id": 2,
       "options": {
         "colorMode": "background",
@@ -69,9 +69,9 @@
       ]
     },
     {
-      "title": "Offline Runners",
+      "title": "Offline",
       "type": "stat",
-      "gridPos": { "h": 8, "w": 4, "x": 8, "y": 0 },
+      "gridPos": { "h": 6, "w": 3, "x": 6, "y": 0 },
       "id": 3,
       "options": {
         "colorMode": "background",
@@ -102,9 +102,42 @@
       ]
     },
     {
+      "title": "Running Tasks",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 9, "y": 0 },
+      "id": 7,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 5 },
+            { "color": "red", "value": 20 }
+          ]},
+          "unit": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "yggdrasil_tasks_running",
+          "legendFormat": "Running",
+          "refId": "A"
+        }
+      ]
+    },
+    {
       "title": "Runners Over Time",
       "type": "timeseries",
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "id": 4,
       "options": {
         "legend": { "calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom" },
@@ -140,7 +173,7 @@
     {
       "title": "Server Uptime",
       "type": "stat",
-      "gridPos": { "h": 8, "w": 4, "x": 0, "y": 18 },
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 6 },
       "id": 5,
       "options": {
         "colorMode": "background",
@@ -153,9 +186,11 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "fixed", "fixedColor": "blue" },
-          "mappings": [],
+          "mappings": [
+            { "options": {}, "type": "value", "value": "1" }
+          ],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
-          "unit": "s"
+          "unit": "dtdurations"
         }
       },
       "targets": [
@@ -167,45 +202,118 @@
       ]
     },
     {
-      "title": "Runner Status Table",
-      "type": "table",
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 26 },
-      "id": 6,
+      "title": "Tasks Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 8,
       "options": {
-        "footer": { "countRows": false, "enablePagination": true, "fields": "", "reducer": ["sum"], "show": false },
-        "sortBy": [{ "desc": true, "displayName": "Status" }]
+        "legend": { "calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
       },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
-          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null }
-          ]}
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
         }
       },
       "targets": [
         {
-          "expr": "yggdrasil_runners_online",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "Online",
+          "expr": "yggdrasil_tasks_running",
+          "legendFormat": "Running",
           "refId": "A"
-        },
+        }
+      ]
+    },
+    {
+      "title": "CPU Usage %",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "id": 9,
+      "options": {
+        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 70 },
+            { "color": "red", "value": 90 }
+          ]},
+          "unit": "percent"
+        }
+      },
+      "targets": [
         {
-          "expr": "yggdrasil_runners_offline",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "Offline",
-          "refId": "B"
-        },
+          "expr": "yggdrasil_runner_cpu_percent",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Memory Usage %",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "id": 10,
+      "options": {
+        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 70 },
+            { "color": "red", "value": 90 }
+          ]},
+          "unit": "percent"
+        }
+      },
+      "targets": [
         {
-          "expr": "yggdrasil_runners_total",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "Total",
-          "refId": "C"
+          "expr": "yggdrasil_runner_memory_percent",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Memory Used (GB)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "id": 11,
+      "options": {
+        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 8 },
+            { "color": "red", "value": 12 }
+          ]},
+          "unit": "decbytes"
+        }
+      },
+      "targets": [
+        {
+          "expr": "yggdrasil_runner_memory_used_bytes",
+          "legendFormat": "{{name}}",
+          "refId": "A"
         }
       ]
     }
