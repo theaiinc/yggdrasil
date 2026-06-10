@@ -30,7 +30,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_runners_total",
+          "expr": "yggdrasil_runners_total{job=\"orchestration-controller\"}",
           "legendFormat": "Total",
           "refId": "A"
         }
@@ -62,7 +62,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_runners_online",
+          "expr": "yggdrasil_runners_online{job=\"orchestration-controller\"}",
           "legendFormat": "Online",
           "refId": "A"
         }
@@ -95,7 +95,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_runners_offline",
+          "expr": "yggdrasil_runners_offline{job=\"orchestration-controller\"}",
           "legendFormat": "Offline",
           "refId": "A"
         }
@@ -128,7 +128,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_tasks_running",
+          "expr": "yggdrasil_tasks_running{job=\"orchestration-controller\"}",
           "legendFormat": "Running",
           "refId": "A"
         }
@@ -154,17 +154,17 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_runners_online",
+          "expr": "yggdrasil_runners_online{job=\"orchestration-controller\"}",
           "legendFormat": "Online",
           "refId": "A"
         },
         {
-          "expr": "yggdrasil_runners_offline",
+          "expr": "yggdrasil_runners_offline{job=\"orchestration-controller\"}",
           "legendFormat": "Offline",
           "refId": "B"
         },
         {
-          "expr": "yggdrasil_runners_total",
+          "expr": "yggdrasil_runners_total{job=\"orchestration-controller\"}",
           "legendFormat": "Total",
           "refId": "C"
         }
@@ -195,7 +195,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_uptime_seconds",
+          "expr": "yggdrasil_uptime_seconds{job=\"orchestration-controller\"}",
           "legendFormat": "Uptime",
           "refId": "A"
         }
@@ -221,7 +221,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_tasks_running",
+          "expr": "yggdrasil_tasks_running{job=\"orchestration-controller\"}",
           "legendFormat": "Running",
           "refId": "A"
         }
@@ -251,7 +251,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_runner_cpu_percent",
+          "expr": "yggdrasil_runner_cpu_percent{job=\"orchestration-controller\"}",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -281,7 +281,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_runner_memory_percent",
+          "expr": "yggdrasil_runner_memory_percent{job=\"orchestration-controller\"}",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -311,7 +311,7 @@
       },
       "targets": [
         {
-          "expr": "yggdrasil_runner_memory_used_bytes",
+          "expr": "yggdrasil_runner_memory_used_bytes{job=\"orchestration-controller\"}",
           "legendFormat": "{{name}}",
           "refId": "A"
         }

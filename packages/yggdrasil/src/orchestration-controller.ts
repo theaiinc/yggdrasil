@@ -170,6 +170,9 @@ app.post('/runners/register', (req, res) => {
   };
 
   const runnerId = body.runnerId || nanoid();
+
+  // Upsert: preserve existing tasks when re-registering (lease expiry, reconnect)
+  const existing = runners.get(runnerId);
   runners.set(runnerId, {
     runnerId,
     name: body.name || 'unknown',
@@ -180,11 +183,12 @@ app.post('/runners/register', (req, res) => {
     lastHeartbeat: new Date(),
     status: 'online',
     ...(body.resources ? { resources: body.resources } : {}),
-    tasks: body.tasks || [],
+    // Preserve existing tasks on re-registration
+    tasks: existing?.tasks ?? body.tasks ?? [],
   });
 
-  logger.info('Runner registered', { runnerId, name: body.name, endpoint: body.endpoint });
-  res.status(201).json({ runnerId, status: 'registered' });
+  logger.info('Runner registered', { runnerId, name: body.name, endpoint: body.endpoint, reRegistered: !!existing });
+  res.status(201).json({ runnerId, status: existing ? 're-registered' : 'registered' });
 });
 
 app.post('/runners/heartbeat', (req, res) => {
