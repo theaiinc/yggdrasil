@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  # Orchestration Controller
+  orchestration-controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=info
+      - HEALTH_CHECK_INTERVAL=30000
+      - MAX_CONCURRENCY=80
+      - MIN_INSTANCES=1
+      - MAX_INSTANCES=10
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - load-balancer
+      - prometheus
+    networks:
+      - yggdrasil-network
+
+  # Load Balancer (Nginx)
+  load-balancer:
+    image: nginx:alpine
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - agent-1
+      - agent-2
+      - agent-3
+    networks:
+      - yggdrasil-network
+
+  # Agent Instances
+  agent-1:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_ID=agent-1
+      - NODE_ENV=development
+      - PORT=8080
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - yggdrasil-network
+
+  agent-2:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_ID=agent-2
+      - NODE_ENV=development
+      - PORT=8080
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - yggdrasil-network
+
+  agent-3:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_ID=agent-3
+      - NODE_ENV=development
+      - PORT=8080
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - yggdrasil-network
+
+  # Monitoring Stack
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - yggdrasil-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - '3001:3000'
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - yggdrasil-network
+
+  # Redis for session storage (optional)
+  redis:
+    image: redis:alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - yggdrasil-network
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  redis_data:
+
+networks:
+  yggdrasil-network:
+    driver: bridge

@@ -316,7 +316,7 @@ GET /metrics
 
 ## 📄 License
 
-UNLICENSED - Proprietary software by The AI Inc
+MIT - See [LICENSE](LICENSE) file for details
 
 ## 🆘 Support
 
