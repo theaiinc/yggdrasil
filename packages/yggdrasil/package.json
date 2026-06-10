@@ -1,6 +1,6 @@
 {
   "name": "@theaiinc/yggdrasil",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Distributed runner orchestration — receives runner registrations and heartbeats via Ratatoskr",
   "author": "The AI Inc",
   "license": "MIT",
