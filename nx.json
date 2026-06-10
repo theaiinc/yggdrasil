@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": ["{projectRoot}/src/**/*", "{projectRoot}/tsconfig.json", "{projectRoot}/package.json"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "cache": true,
+      "inputs": ["{projectRoot}/src/**/*", "{projectRoot}/tests/**/*", "{projectRoot}/tsconfig.json", "{projectRoot}/vitest.config.ts"]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["{projectRoot}/src/**/*", "{projectRoot}/eslint.config.js"]
+    }
+  },
+  "plugins": [
+    {
+      "plugin": "nx/src/plugins/js",
+      "options": {
+        "buildTargetName": "build",
+        "testTargetName": "test",
+        "lintTargetName": "lint"
+      }
+    }
+  ]
+}
