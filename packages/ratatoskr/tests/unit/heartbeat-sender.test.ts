@@ -11,6 +11,10 @@ describe('HeartbeatSender', () => {
   let retryManager: RetryManager;
   let heartbeatSender: HeartbeatSender;
 
+  const mockResourceCollector = {
+    collect: vi.fn().mockResolvedValue({ cpu: { load1: 0, load5: 0, load15: 0, cpus: 1, percent: 0 }, memory: { total: 0, used: 0, free: 0, percent: 0 }, uptime: 0 }),
+  };
+
   beforeEach(() => {
     vi.useFakeTimers();
     healthMonitor = new HealthMonitor();
@@ -18,7 +22,7 @@ describe('HeartbeatSender', () => {
 
     transport = {
       register: vi.fn().mockResolvedValue(undefined),
-      heartbeat: vi.fn().mockResolvedValue(undefined),
+      heartbeat: vi.fn().mockResolvedValue({ status: 'ok' }),
       update: vi.fn().mockResolvedValue(undefined),
       deregister: vi.fn().mockResolvedValue(undefined),
     };
@@ -34,6 +38,7 @@ describe('HeartbeatSender', () => {
         transport,
         healthMonitor,
         retryManager,
+        mockResourceCollector,
         'runner-123',
         30,
       );
@@ -48,6 +53,7 @@ describe('HeartbeatSender', () => {
         transport,
         healthMonitor,
         retryManager,
+        mockResourceCollector,
         'runner-123',
         30,
       );
@@ -63,6 +69,7 @@ describe('HeartbeatSender', () => {
         transport,
         healthMonitor,
         retryManager,
+        mockResourceCollector,
         'runner-123',
         1, // 1 second interval for testing
       );
@@ -85,6 +92,7 @@ describe('HeartbeatSender', () => {
         transport,
         healthMonitor,
         retryManager,
+        mockResourceCollector,
         'runner-123',
         1,
       );

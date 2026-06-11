@@ -68,6 +68,32 @@ export interface HeartbeatPayload {
 }
 
 /**
+ * Response returned by Yggdrasil after a heartbeat.
+ * Can carry a pending update request that the runner should process
+ * after its current tasks complete.
+ */
+export interface HeartbeatResponse {
+  status: string;
+  pendingUpdate?: PendingUpdate;
+}
+
+/**
+ * An update request sent from Yggdrasil to a runner.
+ * The runner should defer execution until all running tasks complete,
+ * then run the update command and restart.
+ */
+export interface PendingUpdate {
+  /** Version string to update to (e.g. '0.2.0'). */
+  version: string;
+  /** Shell command to execute for the update (e.g. 'npm update -g @theaiinc/yggdrasil-ratatoskr'). */
+  command?: string;
+  /** URL to download a new binary/package from. */
+  downloadUrl?: string;
+  /** Arbitrary metadata (e.g. Docker image tag, commit hash). */
+  metadata?: Record<string, unknown>;
+}
+
+/**
  * Endpoint update payload sent when the runner's IP/endpoint changes.
  */
 export interface EndpointUpdatePayload {
@@ -103,7 +129,9 @@ export interface RatatoskrConfig {
   yggdrasilUrl: string;
   /** API key for authenticating with Yggdrasil. */
   apiKey?: string;
-  /** List of capabilities this runner advertises. */
+  /** List of capabilities (presets) this runner advertises.
+   *  Each name is looked up as a preset; transitive deps are resolved
+   *  automatically. Unknown names pass through as-is. */
   capabilities?: string[];
   /** Heartbeat interval in seconds (default: 30). */
   heartbeatInterval?: number;
@@ -133,8 +161,8 @@ export interface RatatoskrConfig {
 export interface Transport {
   /** Register the runner with Yggdrasil. */
   register(payload: RunnerRegistration): Promise<void>;
-  /** Send a heartbeat to Yggdrasil. */
-  heartbeat(payload: HeartbeatPayload): Promise<void>;
+  /** Send a heartbeat to Yggdrasil. Returns the response which may contain a pendingUpdate. */
+  heartbeat(payload: HeartbeatPayload): Promise<HeartbeatResponse>;
   /** Update the runner's endpoint. */
   update(payload: EndpointUpdatePayload): Promise<void>;
   /** Deregister the runner. */

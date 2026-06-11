@@ -4,6 +4,7 @@ import type {
   Transport,
   RunnerRegistration,
   HeartbeatPayload,
+  HeartbeatResponse,
   EndpointUpdatePayload,
   DeregisterPayload,
   RunnerTask,
@@ -46,9 +47,11 @@ export class HttpTransport implements Transport {
 
   /**
    * Send a heartbeat to Yggdrasil.
+   * Returns the response which may carry a pendingUpdate.
    */
-  async heartbeat(payload: HeartbeatPayload): Promise<void> {
-    await this.client.post('/runners/heartbeat', payload);
+  async heartbeat(payload: HeartbeatPayload): Promise<HeartbeatResponse> {
+    const res = await this.client.post<HeartbeatResponse>('/runners/heartbeat', payload);
+    return res.data;
   }
 
   /**

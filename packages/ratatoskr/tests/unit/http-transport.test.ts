@@ -79,6 +79,7 @@ describe('HttpTransport', () => {
 
   describe('heartbeat', () => {
     it('should POST to /runners/heartbeat with heartbeat payload', async () => {
+      mockPost.mockResolvedValue({ data: { status: 'ok' } });
       const transport = new HttpTransport(baseUrl);
       const payload: HeartbeatPayload = {
         runnerId: 'runner-123',

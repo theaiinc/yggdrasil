@@ -17,6 +17,18 @@ import { Registrar } from './services/registrar.js';
 import { ResourceCollector } from './services/resource-collector.js';
 import { RetryManager } from './services/retry-manager.js';
 import { TaskExecutor } from './services/task-executor.js';
+import { UpdateManager } from './services/update-manager.js';
+
+// ── Preset resolution ───────────────────────────────────────────────────────
+
+import type { CombinedPreset } from './presets/index.js';
+import { applyPresetDefaults } from './presets/apply.js';
+import { resolveCapabilities } from './presets/resolve.js';
+
+interface HandlerPathInfo {
+  module: string;
+  export: string;
+}
 
 /**
  * Ratatoskr — Lightweight discovery and heartbeat daemon.
@@ -37,13 +49,23 @@ export class Ratatoskr {
   private readonly heartbeatSender: HeartbeatSender;
   private readonly resourceCollector: ResourceCollector;
   private readonly taskExecutor: TaskExecutor | undefined;
+  private readonly handlerPaths: Record<string, HandlerPathInfo>;
+  private readonly combinedPreset: CombinedPreset;
+  private readonly updateManager: UpdateManager;
   private endpointCheckTimer: ReturnType<typeof setInterval> | undefined;
   private leaseCheckTimer: ReturnType<typeof setInterval> | undefined;
   private shutdownHandlers: (() => void)[] = [];
   private started: boolean = false;
 
   constructor(config: RatatoskrConfig) {
-    this.config = this.resolveConfig(config);
+    // Resolve capabilities (presets) — capabilities ARE the presets
+    const rawCaps = config.capabilities ?? [];
+    const { capabilities, handlerPaths, combined } = resolveCapabilities(rawCaps);
+    this.handlerPaths = handlerPaths;
+    this.combinedPreset = combined;
+    const configWithCaps = { ...config, capabilities };
+
+    this.config = this.resolveConfig(configWithCaps);
     this.state = this.initializeState();
 
     this.transport = new HttpTransport(
@@ -86,7 +108,19 @@ export class Ratatoskr {
       this.config.heartbeatInterval,
     );
 
-    // Initialize TaskExecutor if enabled
+    // Initialize UpdateManager — waits for running tasks to finish
+    // before applying a Yggdrasil-requested update.
+    this.updateManager = new UpdateManager(() => {
+      return this.taskExecutor ? this.taskExecutor.runningCount() : 0;
+    });
+
+    // Wire heartbeat response callback: Yggdrasil can signal pending updates
+    this.heartbeatSender.setOnUpdateRequested((update) => {
+      this.updateManager.requestUpdate(update);
+    });
+
+    // Initialize TaskExecutor without preset handlers initially;
+    // handler loading happens in start() via dynamic import
     if (this.config.taskPollInterval > 0) {
       this.taskExecutor = new TaskExecutor(this.transport, {
         runnerId: this.state.runnerId,
@@ -101,44 +135,72 @@ export class Ratatoskr {
   /**
    * Start the Ratatoskr daemon.
    *
-   * 1. Registers the runner with Yggdrasil
-   * 2. Begins sending heartbeats
-   * 3. Monitors for IP changes
-   * 4. Monitors lease expiry for re-registration
-   * 5. Registers shutdown handlers for graceful deregistration
+   * 1. Load preset handlers via dynamic import
+   * 2. Registers the runner with Yggdrasil
+   * 3. Begins sending heartbeats
+   * 4. Monitors for IP changes
+   * 5. Monitors lease expiry for re-registration
+   * 6. Registers shutdown handlers for graceful deregistration
    */
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+
+    // 0. Apply preset env defaults, then load preset handlers
+    applyPresetDefaults(this.combinedPreset);
+
+    // 1. Load preset handlers (async ESM imports)
+    await this.loadPresetHandlers();
 
     if (this.config.endpointProvider) {
       const customEndpoint = await this.config.endpointProvider();
       this.endpointDetector.setEndpoint(customEndpoint);
     }
 
-    // 1. Register with Yggdrasil
+    // 2. Register with Yggdrasil
     await this.registrar.register();
 
-    // 2. Start heartbeats
+    // 3. Start heartbeats
     this.heartbeatSender.start();
 
-    // 3. Monitor IP changes
+    // 4. Monitor IP changes
     this.endpointCheckTimer = setInterval(() => {
       this.checkEndpoint();
     }, 10_000);
 
-    // 4. Monitor lease expiry
+    // 5. Monitor lease expiry
     this.leaseCheckTimer = setInterval(() => {
       this.registrar.renewIfNeeded();
     }, 5_000);
 
-    // 5. Start task execution polling (if enabled)
+    // 6. Start task execution polling (if enabled)
     if (this.taskExecutor) {
       this.taskExecutor.start();
     }
 
-    // 6. Register shutdown handlers
+    // 7. Register shutdown handlers
     this.registerShutdownHandlers();
+  }
+
+  /**
+   * Load preset handlers via dynamic ESM import and register them
+   * with the TaskExecutor.
+   */
+  private async loadPresetHandlers(): Promise<void> {
+    if (!this.taskExecutor) return;
+    for (const [type, info] of Object.entries(this.handlerPaths)) {
+      if (this.config.taskHandlers[type]) continue; // custom override wins
+      try {
+        const mod = await import(info.module);
+        const fn = mod[info.export] as TaskHandler | undefined;
+        if (fn) {
+          this.taskExecutor.addHandler(type, fn);
+          console.log(`[Ratatoskr] Loaded preset handler "${type}" from ${info.module} (export: ${info.export})`);
+        }
+      } catch (err: unknown) {
+        console.warn(`[Ratatoskr] Failed to load handler "${type}" from ${info.module}:`, (err as Error).message);
+      }
+    }
   }
 
   /**

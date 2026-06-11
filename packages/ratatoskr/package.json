@@ -1,7 +1,7 @@
 {
   "name": "@theaiinc/yggdrasil-ratatoskr",
-  "version": "0.1.2",
-  "description": "Lightweight discovery and heartbeat daemon for Yggdrasil runner registration",
+  "version": "0.2.3",
+  "description": "Runner daemon for Yggdrasil — registration, heartbeat, task execution with LLM/agent capability presets",
   "author": "The AI Inc",
   "license": "MIT",
   "type": "module",
@@ -36,10 +36,15 @@
   },
   "keywords": [
     "ai",
-    "orchestration",
-    "discovery",
-    "heartbeat",
+    "agent",
     "runner",
+    "orchestration",
+    "yggdrasil",
+    "llm",
+    "capabilities",
+    "task-execution",
+    "presets",
+    "heartbeat",
     "distributed-systems"
   ]
 }

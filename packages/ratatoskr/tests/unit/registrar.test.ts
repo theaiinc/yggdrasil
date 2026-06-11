@@ -12,6 +12,10 @@ describe('Registrar', () => {
   let leaseManager: LeaseManager;
   let registrar: Registrar;
 
+  const mockResourceCollector = {
+    collect: vi.fn().mockResolvedValue({ cpu: { load1: 0, load5: 0, load15: 0, cpus: 1, percent: 0 }, memory: { total: 0, used: 0, free: 0, percent: 0 }, uptime: 0 }),
+  };
+
   beforeEach(() => {
     transport = {
       register: vi.fn().mockResolvedValue(undefined),
@@ -29,6 +33,7 @@ describe('Registrar', () => {
       endpointDetector,
       retryManager,
       leaseManager,
+      mockResourceCollector,
       'runner-123',
       'Test Runner',
       ['llm', 'browser'],

@@ -1,11 +1,18 @@
-import { RunnerHealth, type HeartbeatPayload } from '../types/index.js';
+import { RunnerHealth, type HeartbeatPayload, type HeartbeatResponse } from '../types/index.js';
+import type { PendingUpdate } from '../types/index.js';
 import type { HealthMonitor } from './health-monitor.js';
 import type { Transport } from '../transports/transport.js';
 import type { RetryManager } from './retry-manager.js';
 import type { ResourceCollector } from './resource-collector.js';
 
 /**
+ * Callback invoked when Yggdrasil signals a pending update via heartbeat response.
+ */
+export type UpdateRequestedCallback = (update: PendingUpdate) => void;
+
+/**
  * Heartbeat sender that periodically sends health status to Yggdrasil.
+ * Captures any pendingUpdate in the heartbeat response and fires a callback.
  */
 export class HeartbeatSender {
   private readonly transport: Transport;
@@ -16,6 +23,7 @@ export class HeartbeatSender {
   private readonly intervalMs: number;
   private timerId: ReturnType<typeof setInterval> | undefined;
   private running: boolean = false;
+  private onUpdateRequested: UpdateRequestedCallback | undefined;
 
   constructor(
     transport: Transport,
@@ -31,6 +39,13 @@ export class HeartbeatSender {
     this.resourceCollector = resourceCollector;
     this.runnerId = runnerId;
     this.intervalMs = intervalSeconds * 1000;
+  }
+
+  /**
+   * Register a callback for when Yggdrasil requests an update.
+   */
+  setOnUpdateRequested(cb: UpdateRequestedCallback): void {
+    this.onUpdateRequested = cb;
   }
 
   /**
@@ -73,7 +88,14 @@ export class HeartbeatSender {
     };
 
     try {
-      await this.retryManager.execute(() => this.transport.heartbeat(payload));
+      const response = await this.retryManager.execute<HeartbeatResponse>(() =>
+        this.transport.heartbeat(payload),
+      );
+
+      if (response.pendingUpdate && this.onUpdateRequested) {
+        console.log(`[HeartbeatSender] Update requested by Yggdrasil: version=${response.pendingUpdate.version}`);
+        this.onUpdateRequested(response.pendingUpdate);
+      }
     } catch {
       // Heartbeat failures are non-fatal; the retry manager will have
       // already attempted multiple times. On persistent failure the

@@ -10,6 +10,12 @@ export { RetryManager } from './services/retry-manager.js';
 
 export { ResourceCollector } from './services/resource-collector.js';
 export { TaskExecutor } from './services/task-executor.js';
+export { UpdateManager } from './services/update-manager.js';
+
+// Export preset system
+export { registerPreset, getPreset, listPresets, combinePresets, generateDockerfile, applyPresetDefaults, resolveCapabilities } from './presets/index.js';
+export type { CapabilityPreset, CombinedPreset, DockerfileOptions, PresetEnvVar, PresetHandler, PresetFile } from './presets/index.js';
+export { llm, webSearch, shell, agent, codeRunner, python, nodeRuntime, githubCli, computerUse, android } from './presets/builtins.js';
 
 // Export types
 export type { Transport } from './types/index.js';
@@ -18,6 +24,8 @@ export type {
   RatatoskrState,
   RunnerRegistration,
   HeartbeatPayload,
+  HeartbeatResponse,
+  PendingUpdate,
   EndpointUpdatePayload,
   DeregisterPayload,
   HealthResult,

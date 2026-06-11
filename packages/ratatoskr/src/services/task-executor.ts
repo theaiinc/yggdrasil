@@ -157,6 +157,21 @@ export class TaskExecutor {
   }
 
   /**
+   * Register (or override) a task handler at runtime.
+   * Used by the preset system to load handlers via dynamic import.
+   */
+  addHandler(type: string, handler: TaskHandler): void {
+    this.handlers[type] = handler;
+  }
+
+  /**
+   * Returns the number of tasks currently being executed.
+   */
+  runningCount(): number {
+    return this.running.size;
+  }
+
+  /**
    * Single poll cycle.
    */
   private async poll(): Promise<void> {

@@ -4,7 +4,7 @@
   "tags": ["yggdrasil", "runners"],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 2,
+  "version": 3,
   "refresh": "10s",
   "panels": [
     {
@@ -18,7 +18,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
-        "textMode": "auto"
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
       },
       "fieldConfig": {
         "defaults": {
@@ -39,7 +41,7 @@
     {
       "title": "Online",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 3, "x": 3, "y": 0 },
+      "gridPos": { "h": 6, "w": 2, "x": 3, "y": 0 },
       "id": 2,
       "options": {
         "colorMode": "background",
@@ -47,7 +49,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
-        "textMode": "auto"
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
       },
       "fieldConfig": {
         "defaults": {
@@ -71,7 +75,7 @@
     {
       "title": "Offline",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 3, "x": 6, "y": 0 },
+      "gridPos": { "h": 6, "w": 2, "x": 5, "y": 0 },
       "id": 3,
       "options": {
         "colorMode": "background",
@@ -79,7 +83,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
-        "textMode": "auto"
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
       },
       "fieldConfig": {
         "defaults": {
@@ -102,17 +108,19 @@
       ]
     },
     {
-      "title": "Running Tasks",
+      "title": "Outdated",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 3, "x": 9, "y": 0 },
-      "id": 7,
+      "gridPos": { "h": 6, "w": 2, "x": 7, "y": 0 },
+      "id": 12,
       "options": {
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
-        "textMode": "auto"
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
       },
       "fieldConfig": {
         "defaults": {
@@ -120,16 +128,116 @@
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green", "value": null },
-            { "color": "yellow", "value": 5 },
-            { "color": "red", "value": 20 }
+            { "color": "red", "value": 1 }
           ]},
           "unit": "none"
         }
       },
       "targets": [
         {
-          "expr": "yggdrasil_tasks_running{job=\"orchestration-controller\"}",
-          "legendFormat": "Running",
+          "expr": "count(yggdrasil_runner_outdated{job=\"orchestration-controller\"})",
+          "legendFormat": "Outdated",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Pending Updates",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 9, "y": 0 },
+      "id": 13,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 1 },
+            { "color": "red", "value": 5 }
+          ]},
+          "unit": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "count(yggdrasil_runner_pending_update{job=\"orchestration-controller\"})",
+          "legendFormat": "Pending",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Server Uptime",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 },
+      "id": 5,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "mappings": [
+            { "options": {}, "type": "value", "value": "1" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "dtdurations"
+        }
+      },
+      "targets": [
+        {
+          "expr": "yggdrasil_uptime_seconds{job=\"orchestration-controller\"}",
+          "legendFormat": "Uptime",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Expected Version",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
+      "id": 16,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "mappings": [
+            { "options": {}, "type": "value", "value": "1" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
+          "unit": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "yggdrasil_expected_runner_version{job=\"orchestration-controller\"}",
+          "legendFormat": "Expected",
           "refId": "A"
         }
       ]
@@ -140,7 +248,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "id": 4,
       "options": {
-        "legend": { "calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "fieldConfig": {
@@ -171,69 +279,12 @@
       ]
     },
     {
-      "title": "Server Uptime",
-      "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 6 },
-      "id": 5,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "fixed", "fixedColor": "blue" },
-          "mappings": [
-            { "options": {}, "type": "value", "value": "1" }
-          ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
-          "unit": "dtdurations"
-        }
-      },
-      "targets": [
-        {
-          "expr": "yggdrasil_uptime_seconds{job=\"orchestration-controller\"}",
-          "legendFormat": "Uptime",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "title": "Tasks Over Time",
+      "title": "Memory Used (GB)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
-      "id": 8,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 11,
       "options": {
-        "legend": { "calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "none" }
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "none"
-        }
-      },
-      "targets": [
-        {
-          "expr": "yggdrasil_tasks_running{job=\"orchestration-controller\"}",
-          "legendFormat": "Running",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "title": "CPU Usage %",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
-      "id": 9,
-      "options": {
-        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "fieldConfig": {
@@ -243,27 +294,87 @@
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green", "value": null },
-            { "color": "orange", "value": 70 },
-            { "color": "red", "value": 90 }
+            { "color": "orange", "value": 8 },
+            { "color": "red", "value": 12 }
           ]},
-          "unit": "percent"
+          "unit": "decbytes"
         }
       },
       "targets": [
         {
-          "expr": "yggdrasil_runner_cpu_percent{job=\"orchestration-controller\"}",
+          "expr": "yggdrasil_runner_memory_used_bytes{job=\"orchestration-controller\"}",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
       ]
     },
     {
+      "title": "Runner Versions",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 14,
+      "options": {
+        "footer": { "show": false, "reducers": [] },
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Runner" }],
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 0 }
+          ]},
+          "unit": "none",
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": false,
+            "minWidth": 120,
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          }
+        }
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "expr": "yggdrasil_runner_version_info{job=\"orchestration-controller\"}",
+          "format": "table",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        },
+        {
+          "expr": "yggdrasil_runner_pending_update{job=\"orchestration-controller\"}",
+          "format": "table",
+          "legendFormat": "",
+          "refId": "B",
+          "instant": true
+        },
+        {
+          "expr": "yggdrasil_runner_outdated{job=\"orchestration-controller\"}",
+          "format": "table",
+          "legendFormat": "",
+          "refId": "C",
+          "instant": true
+        }
+      ]
+    },
+    {
       "title": "Memory Usage %",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
       "id": 10,
       "options": {
-        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "fieldConfig": {
@@ -288,12 +399,38 @@
       ]
     },
     {
-      "title": "Memory Used (GB)",
+      "title": "Tasks Over Time",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
-      "id": 11,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "id": 8,
       "options": {
-        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["mean", "max", "min"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "yggdrasil_tasks_running{job=\"orchestration-controller\"}",
+          "legendFormat": "Running",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "CPU Usage %",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "id": 9,
+      "options": {
+        "legend": { "calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "fieldConfig": {
@@ -303,15 +440,15 @@
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [
             { "color": "green", "value": null },
-            { "color": "orange", "value": 8 },
-            { "color": "red", "value": 12 }
+            { "color": "orange", "value": 70 },
+            { "color": "red", "value": 90 }
           ]},
-          "unit": "decbytes"
+          "unit": "percent"
         }
       },
       "targets": [
         {
-          "expr": "yggdrasil_runner_memory_used_bytes{job=\"orchestration-controller\"}",
+          "expr": "yggdrasil_runner_cpu_percent{job=\"orchestration-controller\"}",
           "legendFormat": "{{name}}",
           "refId": "A"
         }

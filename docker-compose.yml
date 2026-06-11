@@ -11,6 +11,7 @@ services:
       - LOG_LEVEL=info
       - API_KEYS=${YGGDRASIL_API_KEY:-dev-api-key-123}
       - LEASE_TTL_MS=60000
+      - EXPECTED_RUNNER_VERSION=${EXPECTED_RUNNER_VERSION:-0.1.0}
     env_file:
       - .env
     volumes:

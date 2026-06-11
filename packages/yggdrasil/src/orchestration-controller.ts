@@ -5,50 +5,19 @@ import helmet from 'helmet';
 import { getLogger } from './services/logger.js';
 import { nanoid } from 'nanoid';
 
+import type {
+  SystemResources,
+  PendingUpdate,
+  RunnerInfo,
+  RunnerTask,
+  RegisterRunnerPayload,
+  HeartbeatPayload,
+  HeartbeatResponse,
+  RequestUpdatePayload,
+} from './types/index.js';
+
 const app = express();
 const logger = getLogger();
-
-// ─── Runner & task types ─────────────────────────────────────────
-
-interface SystemResources {
-  cpu: {
-    load1: number;
-    load5: number;
-    load15: number;
-    cpus: number;
-    percent: number;
-  };
-  memory: {
-    total: number;
-    used: number;
-    free: number;
-    percent: number;
-  };
-  uptime: number;
-}
-
-interface RunnerInfo {
-  runnerId: string;
-  name: string;
-  endpoint: string;
-  version: string;
-  capabilities: string[];
-  labels: Record<string, string>;
-  lastHeartbeat: Date;
-  status: 'online' | 'offline';
-  resources?: SystemResources;
-  tasks: RunnerTask[];
-}
-
-interface RunnerTask {
-  taskId: string;
-  type: string;
-  status: 'running' | 'completed' | 'failed';
-  startedAt: number;
-  completedAt?: number;
-  correlationId?: string;
-  metadata?: Record<string, unknown>;
-}
 
 const runners = new Map<string, RunnerInfo>();
 
@@ -114,39 +83,119 @@ app.get('/health', (_req, res) => {
   });
 });
 
+function escapePrometheusLabelValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+}
+
+function runnerLabels(id: string, name: string): string {
+  return `runner="${escapePrometheusLabelValue(id)}",name="${escapePrometheusLabelValue(name)}"`;
+}
+
 app.get('/metrics', (_req, res) => {
-  const online = Array.from(runners.values()).filter(r => r.status === 'online');
+  // Snapshot runner state once so concurrent heartbeats cannot produce duplicate
+  // series with different values within a single scrape response.
+  const snapshot = Array.from(runners.entries());
+  const online = snapshot.filter(([, r]) => r.status === 'online');
+  const offlineCount = snapshot.length - online.length;
+  const tasksRunning = snapshot.reduce(
+    (sum, [, r]) => sum + r.tasks.filter(t => t.status === 'running').length,
+    0,
+  );
+
   const metrics: string[] = [
     '# HELP yggdrasil_runners_total Total number of registered runners',
     '# TYPE yggdrasil_runners_total gauge',
-    `yggdrasil_runners_total ${runners.size}`,
+    `yggdrasil_runners_total ${snapshot.length}`,
     '# HELP yggdrasil_runners_online Number of online runners',
     '# TYPE yggdrasil_runners_online gauge',
     `yggdrasil_runners_online ${online.length}`,
     '# HELP yggdrasil_runners_offline Number of offline runners',
     '# TYPE yggdrasil_runners_offline gauge',
-    `yggdrasil_runners_offline ${runners.size - online.length}`,
+    `yggdrasil_runners_offline ${offlineCount}`,
     '# HELP yggdrasil_uptime_seconds Server uptime in seconds',
-    '# TYPE yggdrasil_uptime_seconds counter',
+    '# TYPE yggdrasil_uptime_seconds gauge',
     `yggdrasil_uptime_seconds ${process.uptime()}`,
     '# HELP yggdrasil_tasks_running Number of currently running tasks across all runners',
     '# TYPE yggdrasil_tasks_running gauge',
-    `yggdrasil_tasks_running ${Array.from(runners.values()).reduce((sum, r) => sum + r.tasks.filter(t => t.status === 'running').length, 0)}`,
+    `yggdrasil_tasks_running ${tasksRunning}`,
   ];
 
-  // Per-runner resource metrics
-  for (const [id, runner] of runners.entries()) {
-    if (runner.resources && runner.status === 'online') {
-      const labels = `runner="${id}",name="${runner.name}"`;
-      metrics.push(`# HELP yggdrasil_runner_cpu_percent CPU usage percent per runner`);
-      metrics.push(`# TYPE yggdrasil_runner_cpu_percent gauge`);
-      metrics.push(`yggdrasil_runner_cpu_percent{${labels}} ${runner.resources.cpu.percent}`);
-      metrics.push(`# HELP yggdrasil_runner_memory_percent Memory usage percent per runner`);
-      metrics.push(`# TYPE yggdrasil_runner_memory_percent gauge`);
-      metrics.push(`yggdrasil_runner_memory_percent{${labels}} ${runner.resources.memory.percent}`);
-      metrics.push(`# HELP yggdrasil_runner_memory_used_bytes Memory used bytes per runner`);
-      metrics.push(`# TYPE yggdrasil_runner_memory_used_bytes gauge`);
-      metrics.push(`yggdrasil_runner_memory_used_bytes{${labels}} ${runner.resources.memory.used}`);
+  if (EXPECTED_RUNNER_VERSION) {
+    metrics.push(
+      '# HELP yggdrasil_expected_runner_version Expected runner version (always 1) — label carries the expected version',
+      '# TYPE yggdrasil_expected_runner_version gauge',
+      `yggdrasil_expected_runner_version{version="${escapePrometheusLabelValue(EXPECTED_RUNNER_VERSION)}"} 1`,
+    );
+  }
+
+  const onlineWithResources = online.filter(([, r]) => r.resources);
+  if (onlineWithResources.length > 0) {
+    metrics.push(
+      '# HELP yggdrasil_runner_cpu_percent CPU usage percent per runner',
+      '# TYPE yggdrasil_runner_cpu_percent gauge',
+    );
+    for (const [id, runner] of onlineWithResources) {
+      metrics.push(
+        `yggdrasil_runner_cpu_percent{${runnerLabels(id, runner.name)}} ${runner.resources!.cpu.percent}`,
+      );
+    }
+
+    metrics.push(
+      '# HELP yggdrasil_runner_memory_percent Memory usage percent per runner',
+      '# TYPE yggdrasil_runner_memory_percent gauge',
+    );
+    for (const [id, runner] of onlineWithResources) {
+      metrics.push(
+        `yggdrasil_runner_memory_percent{${runnerLabels(id, runner.name)}} ${runner.resources!.memory.percent}`,
+      );
+    }
+
+    metrics.push(
+      '# HELP yggdrasil_runner_memory_used_bytes Memory used bytes per runner',
+      '# TYPE yggdrasil_runner_memory_used_bytes gauge',
+    );
+    for (const [id, runner] of onlineWithResources) {
+      metrics.push(
+        `yggdrasil_runner_memory_used_bytes{${runnerLabels(id, runner.name)}} ${runner.resources!.memory.used}`,
+      );
+    }
+  }
+
+  const outdatedRunners = EXPECTED_RUNNER_VERSION
+    ? snapshot.filter(([, r]) => r.version !== EXPECTED_RUNNER_VERSION)
+    : [];
+  const pendingUpdateRunners = snapshot.filter(([, r]) => r.pendingUpdate);
+
+  if (snapshot.length > 0) {
+    metrics.push(
+      '# HELP yggdrasil_runner_version_info Runner version (always 1) — labels carry version',
+      '# TYPE yggdrasil_runner_version_info gauge',
+    );
+    for (const [id, runner] of snapshot) {
+      const verLabels = `${runnerLabels(id, runner.name)},version="${escapePrometheusLabelValue(runner.version)}"`;
+      metrics.push(`yggdrasil_runner_version_info{${verLabels}} 1`);
+    }
+  }
+
+  if (outdatedRunners.length > 0) {
+    metrics.push(
+      '# HELP yggdrasil_runner_outdated Outdated runner flag (1 = version mismatch)',
+      '# TYPE yggdrasil_runner_outdated gauge',
+    );
+    for (const [id, runner] of outdatedRunners) {
+      const outdatedLabels = `${runnerLabels(id, runner.name)},current="${escapePrometheusLabelValue(runner.version)}",expected="${escapePrometheusLabelValue(EXPECTED_RUNNER_VERSION)}"`;
+      metrics.push(`yggdrasil_runner_outdated{${outdatedLabels}} 1`);
+    }
+  }
+
+  if (pendingUpdateRunners.length > 0) {
+    metrics.push(
+      '# HELP yggdrasil_runner_pending_update Pending update flag per runner (1 = update pending)',
+      '# TYPE yggdrasil_runner_pending_update gauge',
+    );
+    for (const [id, runner] of pendingUpdateRunners) {
+      const updLabels = `${runnerLabels(id, runner.name)},current_version="${escapePrometheusLabelValue(runner.version)}",target_version="${escapePrometheusLabelValue(runner.pendingUpdate!.version)}"`;
+      metrics.push(`yggdrasil_runner_pending_update{${updLabels}} 1`);
     }
   }
 
@@ -215,8 +264,59 @@ app.post('/runners/heartbeat', (req, res) => {
     runner.tasks = body.tasks;
   }
 
-  logger.debug('Runner heartbeat received', { runnerId });
-  res.json({ status: 'ok' });
+  // If there is a pending update, include it in the response and clear it
+  const pendingUpdate = runner.pendingUpdate;
+  if (pendingUpdate) {
+    delete runner.pendingUpdate;
+  }
+
+  logger.debug('Runner heartbeat received', { runnerId, hasPendingUpdate: !!pendingUpdate });
+  res.json({ status: 'ok', ...(pendingUpdate ? { pendingUpdate } : {}) });
+});
+
+/**
+ * Request an update for a specific runner.
+ * The update is stored and delivered on the next heartbeat response.
+ * The runner defers execution until all running tasks complete.
+ */
+app.post('/runners/:runnerId/request-update', (req, res) => {
+  const runner = runners.get(req.params.runnerId);
+  if (!runner) {
+    res.status(404).json({ error: 'Runner not found' });
+    return;
+  }
+
+  const body = req.body as {
+    version: string;
+    command?: string;
+    downloadUrl?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  if (!body.version) {
+    res.status(400).json({ error: 'version is required' });
+    return;
+  }
+
+  runner.pendingUpdate = {
+    version: body.version,
+    ...(body.command !== undefined ? { command: body.command } : {}),
+    ...(body.downloadUrl !== undefined ? { downloadUrl: body.downloadUrl } : {}),
+    ...(body.metadata !== undefined ? { metadata: body.metadata } : {}),
+  };
+
+  logger.info('Update requested for runner', {
+    runnerId: runner.runnerId,
+    version: body.version,
+    hasCommand: !!body.command,
+    hasDownloadUrl: !!body.downloadUrl,
+  });
+
+  res.json({
+    status: 'update_requested',
+    runnerId: runner.runnerId,
+    pendingUpdate: runner.pendingUpdate,
+  });
 });
 
 app.post('/runners/update', (req, res) => {
@@ -355,38 +455,48 @@ app.get('/api/runners/:runnerId', (req, res) => {
 // ─── Lease-based offline detection ──────────────────────────────
 
 const LEASE_TTL_MS = parseInt(process.env['LEASE_TTL_MS'] || '60000', 10);
+const EXPECTED_RUNNER_VERSION = process.env['EXPECTED_RUNNER_VERSION'] || '';
 
-setInterval(() => {
-  const now = Date.now();
-  const stale: string[] = [];
+if (typeof process.env.VITEST === 'undefined') {
+  setInterval(() => {
+    const now = Date.now();
+    const stale: string[] = [];
 
-  for (const [runnerId, runner] of runners.entries()) {
-    if (runner.status === 'offline') continue;
-    const elapsed = now - runner.lastHeartbeat.getTime();
-    if (elapsed > LEASE_TTL_MS) {
-      stale.push(runnerId);
+    for (const [runnerId, runner] of runners.entries()) {
+      if (runner.status === 'offline') continue;
+      const elapsed = now - runner.lastHeartbeat.getTime();
+      if (elapsed > LEASE_TTL_MS) {
+        stale.push(runnerId);
+      }
     }
-  }
 
-  for (const runnerId of stale) {
-    const runner = runners.get(runnerId)!;
-    runner.status = 'offline';
-    logger.warn('Runner marked offline due to heartbeat timeout', {
-      runnerId,
-      name: runner.name,
-      missedBy: `${Math.round((now - runner.lastHeartbeat.getTime()) / 1000)}s`,
-    });
-  }
-}, 10_000);
+    for (const runnerId of stale) {
+      const runner = runners.get(runnerId)!;
+      runner.status = 'offline';
+      logger.warn('Runner marked offline due to heartbeat timeout', {
+        runnerId,
+        name: runner.name,
+        missedBy: `${Math.round((now - runner.lastHeartbeat.getTime()) / 1000)}s`,
+      });
+    }
+  }, 10_000);
+}
 
 // ─── Start server ───────────────────────────────────────────────
 
 const PORT = parseInt(process.env['PORT'] || '3000', 10);
-app.listen(PORT, '0.0.0.0', () => {
-  logger.info('Orchestration controller started (runner-only mode via Ratatoskr)', {
-    port: PORT,
-    environment: process.env['NODE_ENV'] || 'development',
-    apiKeysConfigured: API_KEYS.length > 0,
-    leaseTtlMs: LEASE_TTL_MS,
+
+// In test mode (vitest), export app/runners without starting the server
+if (typeof process.env.VITEST === 'undefined') {
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info('Orchestration controller started (runner-only mode via Ratatoskr)', {
+      port: PORT,
+      environment: process.env['NODE_ENV'] || 'development',
+      apiKeysConfigured: API_KEYS.length > 0,
+      leaseTtlMs: LEASE_TTL_MS,
+    });
   });
-});
+}
+
+export { app, runners };
+
