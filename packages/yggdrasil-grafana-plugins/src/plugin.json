@@ -10,14 +10,19 @@
       "name": "The AI Inc",
       "url": "https://github.com/theaiinc"
     },
-    "keywords": ["yggdrasil", "admin", "ratatoskr", "orchestration"],
+    "keywords": [
+      "yggdrasil",
+      "admin",
+      "ratatoskr",
+      "orchestration"
+    ],
     "links": [
       {
         "name": "Source",
         "url": "https://github.com/theaiinc/yggdrasil"
       }
     ],
-    "version": "0.3.2",
+    "version": "0.3.3",
     "updated": "2026-06-12"
   },
   "dependencies": {
