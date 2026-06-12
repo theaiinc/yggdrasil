@@ -20,29 +20,20 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
 
       - run: npm install
       - run: npm run check-versions
 
       - name: Publish @theaiinc/yggdrasil
-        env:
-          NODE_AUTH_TOKEN: ""
         run: npm publish -w packages/yggdrasil --access public
 
       - name: Publish @theaiinc/yggdrasil-ratatoskr
-        env:
-          NODE_AUTH_TOKEN: ""
         run: npm publish -w packages/ratatoskr --access public
 
       - name: Publish @theaiinc/yggdrasil-runtime
-        env:
-          NODE_AUTH_TOKEN: ""
         run: npm publish -w packages/yggdrasil-runtime --access public
 
       - name: Publish @theaiinc/yggdrasiladmin-panel
-        env:
-          NODE_AUTH_TOKEN: ""
         working-directory: packages/yggdrasil-grafana-plugins
         run: |
           npm install
