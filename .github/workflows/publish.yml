@@ -12,19 +12,17 @@ jobs:
       id-token: write  # needed for npm provenance
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.target_commitish }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install root dependencies
         run: npm ci
 
       - name: Verify versions are in sync
@@ -42,5 +40,14 @@ jobs:
 
       - name: Publish @theaiinc/yggdrasil-runtime
         run: npm publish -w packages/yggdrasil-runtime --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @theaiinc/yggdrasiladmin-panel
+        working-directory: packages/yggdrasil-grafana-plugins
+        run: |
+          npm ci
+          npm run build
+          npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
