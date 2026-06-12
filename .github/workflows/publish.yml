@@ -19,8 +19,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false  # never use caching in release builds
+          # Intentionally omitting registry-url to avoid setup-node injecting
+          # GITHUB_TOKEN as NODE_AUTH_TOKEN into .npmrc — that blocks OIDC.
+          # npm CLI auto-detects OIDC when ACTIONS_ID_TOKEN_REQUEST_URL is set.
 
       - run: npm install
       - run: npm run check-versions
