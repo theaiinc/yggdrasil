@@ -8,8 +8,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write  # Required for OIDC trusted publishing
       contents: read
-      id-token: write  # needed for npm provenance
 
     steps:
       - uses: actions/checkout@v4
@@ -18,36 +18,25 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
 
-      - name: Install root dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Verify versions are in sync
-        run: npm run check-versions
+      - run: npm run check-versions
 
       - name: Publish @theaiinc/yggdrasil
-        run: npm publish -w packages/yggdrasil --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish -w packages/yggdrasil --access public
 
       - name: Publish @theaiinc/yggdrasil-ratatoskr
-        run: npm publish -w packages/ratatoskr --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish -w packages/ratatoskr --access public
 
       - name: Publish @theaiinc/yggdrasil-runtime
-        run: npm publish -w packages/yggdrasil-runtime --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish -w packages/yggdrasil-runtime --access public
 
       - name: Publish @theaiinc/yggdrasiladmin-panel
         working-directory: packages/yggdrasil-grafana-plugins
         run: |
           npm ci
           npm run build
-          npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm publish --access public
