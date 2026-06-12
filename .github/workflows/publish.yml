@@ -20,10 +20,8 @@ jobs:
         with:
           node-version: 24
 
-      - name: Clear any stale auth config that blocks OIDC
-        run: |
-          unset NODE_AUTH_TOKEN
-          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
+      - name: Physically remove the temp .npmrc setup-node creates (blocks OIDC)
+        run: rm -f "$NPM_CONFIG_USERCONFIG"
 
       - run: npm install
 
