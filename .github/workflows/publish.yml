@@ -8,7 +8,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # Required for OIDC trusted publishing
+      id-token: write  # Required for OIDC
       contents: read
 
     steps:
@@ -19,6 +19,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm to v11 for OIDC support (Node 24 ships npm 10.x)
+        run: npm install -g npm@11
 
       - run: npm install
 
