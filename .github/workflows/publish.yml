@@ -17,42 +17,23 @@ jobs:
         with:
           ref: ${{ github.event.release.target_commitish }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
 
       - run: npm install
       - run: npm run check-versions
 
-      # Publish from each package directory.
-      # npm CLI 11.5+ auto-detects OIDC via ACTIONS_ID_TOKEN_REQUEST_URL
-      # when id-token: write permission is set AND the environment claim
-      # (from job-level `environment: release`) matches npmjs.com config.
-      # Skip -w flag, use working-directory instead.
-      - name: Publish @theaiinc/yggdrasil
-        env:
-          NODE_AUTH_TOKEN: ""
-        working-directory: packages/yggdrasil
-        run: npm publish --access public
-
-      - name: Publish @theaiinc/yggdrasil-ratatoskr
-        env:
-          NODE_AUTH_TOKEN: ""
-        working-directory: packages/ratatoskr
-        run: npm publish --access public
-
-      - name: Publish @theaiinc/yggdrasil-runtime
-        env:
-          NODE_AUTH_TOKEN: ""
-        working-directory: packages/yggdrasil-runtime
-        run: npm publish --access public
-
-      - name: Publish @theaiinc/yggdrasiladmin-panel
-        env:
-          NODE_AUTH_TOKEN: ""
-        working-directory: packages/yggdrasil-grafana-plugins
+      # Single step — OIDC is auto-detected once and re-used across all
+      # publishes. Separating into per-package steps means fresh npm processes
+      # are blocked by setup-node's temp .npmrc (empty _authToken).
+      - name: Publish all packages
         run: |
+          npm publish -w packages/yggdrasil --access public
+          npm publish -w packages/ratatoskr --access public
+          npm publish -w packages/yggdrasil-runtime --access public
+
+          cd packages/yggdrasil-grafana-plugins
           npm install
           npm run build
           npm publish --access public
