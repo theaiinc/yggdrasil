@@ -24,14 +24,32 @@ jobs:
       - run: npm install
       - run: npm run check-versions
 
-      # Single step — OIDC is auto-detected once and re-used across all
-      # publishes. Separating into per-package steps means fresh npm processes
-      # are blocked by setup-node's temp .npmrc (empty _authToken).
       - name: Publish all packages
         run: |
-          npm publish -w packages/yggdrasil --access public
-          npm publish -w packages/ratatoskr --access public
-          npm publish -w packages/yggdrasil-runtime --access public
+          # Get GitHub OIDC id_token (audience = npm)
+          JWT=$(curl -sSL \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" \
+            | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).value")
+
+          # Exchange for a short-lived npm publish token
+          # The token works for ANY package the OIDC trusted publisher is
+          # configured for, so we only need one exchange.
+          TOKEN=$(curl -sS -X POST \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@theaiinc%2fyggdrasil" \
+            -H "Authorization: Bearer $JWT" \
+            | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).token")
+
+          echo "//registry.npmjs.org/:_authToken=$TOKEN" > ~/.npmrc
+
+          cd packages/yggdrasil && npm publish --access public
+          cd "$OLDPWD"
+
+          cd packages/ratatoskr && npm publish --access public
+          cd "$OLDPWD"
+
+          cd packages/yggdrasil-runtime && npm publish --access public
+          cd "$OLDPWD"
 
           cd packages/yggdrasil-grafana-plugins
           npm install
