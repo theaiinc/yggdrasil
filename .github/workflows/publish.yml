@@ -20,25 +20,20 @@ jobs:
         with:
           node-version: 24
 
-      - name: Physically remove the temp .npmrc setup-node creates (blocks OIDC)
-        run: rm -f "$NPM_CONFIG_USERCONFIG"
-
       - run: npm install
-
       - run: npm run check-versions
 
-      - name: Publish @theaiinc/yggdrasil
-        run: npm publish -w packages/yggdrasil --access public
-
-      - name: Publish @theaiinc/yggdrasil-ratatoskr
-        run: npm publish -w packages/ratatoskr --access public
-
-      - name: Publish @theaiinc/yggdrasil-runtime
-        run: npm publish -w packages/yggdrasil-runtime --access public
-
-      - name: Publish @theaiinc/yggdrasiladmin-panel
-        working-directory: packages/yggdrasil-grafana-plugins
+      - name: Publish all packages
         run: |
+          # Remove setup-node's .npmrc — it has an empty _authToken that blocks OIDC
+          rm -f "$NPM_CONFIG_USERCONFIG"
+          unset NPM_CONFIG_USERCONFIG
+
+          npm publish -w packages/yggdrasil --access public
+          npm publish -w packages/ratatoskr --access public
+          npm publish -w packages/yggdrasil-runtime --access public
+
+          cd packages/yggdrasil-grafana-plugins
           npm install
           npm run build
           npm publish --access public
