@@ -492,18 +492,45 @@ The `EXPECTED_RUNNER_VERSION` env var in Yggdrasil defaults to `YGGDRASIL_VERSIO
 
 ### CI automated npm publish
 
-When a GitHub Release is created (tag pushed), `.github/workflows/publish.yml` runs automatically:
+When a GitHub Release is created (tag pushed), `.github/workflows/publish.yml` runs automatically.
+It publishes 4 packages to npm via OIDC (no tokens):
 
-1. **`check-versions`** — Verifies all workspace packages share the root version
-2. **`publish`** — Runs `npm ci` at root, then publishes each non-private package to npm with `--provenance`:
-   - `@theaiinc/yggdrasil`
-   - `@theaiinc/yggdrasil-ratatoskr`
-   - `@theaiinc/yggdrasil-runtime`
+- `@theaiinc/yggdrasil`
+- `@theaiinc/yggdrasil-ratatoskr`
+- `@theaiinc/yggdrasil-runtime`
+- `@theaiinc/yggdrasiladmin-panel` (Grafana plugin)
 
-Requires `NPM_TOKEN` secret in the GitHub repository (an npm automation token with publish scope).
+#### How OIDC works
 
-#### One-time setup
+The workflow uses **npm Trusted Publishers** (OIDC) instead of long-lived tokens:
 
-1. Generate an npm automation token: https://www.npmjs.com/settings/~/tokens
-2. Add it as a repository secret: `Settings → Secrets and variables → Actions → New repository secret`
-3. Name: `NPM_TOKEN`, value: the token
+1. Job has `permissions: id-token: write` to request a GitHub Actions OIDC token
+2. Job has `environment: release` so the OIDC token contains an `environment: release` claim
+3. The job-level `environment:` must match the **Environment** field configured on npmjs.com
+4. **Do NOT use `registry-url` in `setup-node`** — it writes a temp `.npmrc` with `_authToken` that overrides OIDC
+5. npm CLI 11.5+ auto-detects `ACTIONS_ID_TOKEN_REQUEST_URL` and exchanges the OIDC token
+
+#### One-time setup per package
+
+For each package being published, configure a trusted publisher on npmjs.com:
+
+1. Go to `npmjs.com → Packages → <package> → Settings → Trusted publisher`
+2. Select **GitHub Actions**
+3. Fields:
+   - **Repository owner**: `theaiinc`
+   - **Repository name**: `yggdrasil`
+   - **Workflow filename**: `publish.yml`
+   - **Environment**: `release` (must match workflow's `environment:`)
+   - **Permissions**: check `npm publish` (and/or `npm stage publish`)
+4. Save — npm does NOT validate at save time, errors appear only on publish
+
+#### Troubleshooting
+
+- **`ENEEDAUTH`**: OIDC didn't kick in. Common causes:
+  - `registry-url` in `setup-node` creating a conflicting `.npmrc`
+  - Missing `environment:` in job (or mismatch with npmjs.com config)
+  - Missing `id-token: write` permission
+- **`404 package not found`**: OIDC exchange succeeded but the trusted publisher config didn't match
+  - Check the Environment field on npmjs.com
+  - Check the workflow filename matches exactly (including `.yml` extension)
+  - Self-hosted runners are not supported

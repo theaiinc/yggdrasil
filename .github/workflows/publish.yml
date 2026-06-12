@@ -17,23 +17,40 @@ jobs:
         with:
           ref: ${{ github.event.release.target_commitish }}
 
-      - uses: actions/setup-node@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
 
       - run: npm install
       - run: npm run check-versions
 
+      # Publish from each package directory.
+      # npm CLI 11.5+ auto-detects OIDC via ACTIONS_ID_TOKEN_REQUEST_URL
+      # when id-token: write permission is set AND the environment claim
+      # (from job-level `environment: release`) matches npmjs.com config.
+      # Skip -w flag, use working-directory instead.
       - name: Publish @theaiinc/yggdrasil
-        run: npm publish -w packages/yggdrasil --access public
+        env:
+          NODE_AUTH_TOKEN: ""
+        working-directory: packages/yggdrasil
+        run: npm publish --access public
 
       - name: Publish @theaiinc/yggdrasil-ratatoskr
-        run: npm publish -w packages/ratatoskr --access public
+        env:
+          NODE_AUTH_TOKEN: ""
+        working-directory: packages/ratatoskr
+        run: npm publish --access public
 
       - name: Publish @theaiinc/yggdrasil-runtime
-        run: npm publish -w packages/yggdrasil-runtime --access public
+        env:
+          NODE_AUTH_TOKEN: ""
+        working-directory: packages/yggdrasil-runtime
+        run: npm publish --access public
 
       - name: Publish @theaiinc/yggdrasiladmin-panel
+        env:
+          NODE_AUTH_TOKEN: ""
         working-directory: packages/yggdrasil-grafana-plugins
         run: |
           npm install
