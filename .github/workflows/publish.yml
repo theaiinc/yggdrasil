@@ -20,14 +20,33 @@ jobs:
         with:
           node-version: 24
 
+      - name: Debug environment
+        run: |
+          echo "=== npm version ==="
+          npm --version
+          echo "=== node version ==="
+          node --version
+          echo "=== npm config list ==="
+          npm config list
+          echo "=== NPM_CONFIG_USERCONFIG ==="
+          echo "$NPM_CONFIG_USERCONFIG"
+          echo "=== files in NPM_CONFIG_USERCONFIG dir ==="
+          if [ -n "$NPM_CONFIG_USERCONFIG" ]; then
+            ls -la "$(dirname "$NPM_CONFIG_USERCONFIG")"
+          fi
+          echo "=== ~/.npmrc ==="
+          cat ~/.npmrc 2>/dev/null || echo "(none)"
+          echo "=== ACTIONS_ID_TOKEN_REQUEST_TOKEN exists ==="
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then echo "yes"; else echo "no"; fi
+          echo "=== ACTIONS_ID_TOKEN_REQUEST_URL ==="
+          echo "$ACTIONS_ID_TOKEN_REQUEST_URL"
+
       - run: npm install
       - run: npm run check-versions
 
       - name: Publish all packages
         run: |
-          # Remove setup-node's .npmrc — it has an empty _authToken that blocks OIDC
-          rm -f "$NPM_CONFIG_USERCONFIG"
-          unset NPM_CONFIG_USERCONFIG
+          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
 
           npm publish -w packages/yggdrasil --access public
           npm publish -w packages/ratatoskr --access public
