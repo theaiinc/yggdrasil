@@ -19,15 +19,19 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          # Intentionally omitting registry-url to avoid setup-node injecting
-          # GITHUB_TOKEN as NODE_AUTH_TOKEN into .npmrc — that blocks OIDC.
-          # npm CLI auto-detects OIDC when ACTIONS_ID_TOKEN_REQUEST_URL is set.
+          registry-url: 'https://registry.npmjs.org'
 
       - run: npm install
       - run: npm run check-versions
 
       - name: Publish all packages
+        env:
+          NODE_AUTH_TOKEN: ""
         run: |
+          # setup-node sets NODE_AUTH_TOKEN=GITHUB_TOKEN which overrides OIDC
+          # Delete it from npm config so OIDC kicks in
+          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
+
           npm publish -w packages/yggdrasil --access public
           npm publish -w packages/ratatoskr --access public
           npm publish -w packages/yggdrasil-runtime --access public
