@@ -24,33 +24,55 @@ jobs:
       - run: npm install
       - run: npm run check-versions
 
-      - name: Publish all packages
+      - name: Get GitHub OIDC id_token (reused for all exchanges)
+        id: jwt
         run: |
-          # Get GitHub OIDC id_token (audience = npm)
           JWT=$(curl -sSL \
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" \
             | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).value")
+          echo -n "$JWT" > /tmp/oidc-jwt.txt
 
-          # Exchange for a short-lived npm publish token
-          # The token works for ANY package the OIDC trusted publisher is
-          # configured for, so we only need one exchange.
+      # The npm OIDC exchange endpoint returns a package-scoped short-lived
+      # token.  We must exchange separately for each package.
+      - name: Publish @theaiinc/yggdrasil
+        run: |
+          JWT=$(cat /tmp/oidc-jwt.txt)
           TOKEN=$(curl -sS -X POST \
             "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@theaiinc%2fyggdrasil" \
             -H "Authorization: Bearer $JWT" \
             | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).token")
-
           echo "//registry.npmjs.org/:_authToken=$TOKEN" > ~/.npmrc
-
           cd packages/yggdrasil && npm publish --access public
-          cd "$OLDPWD"
 
+      - name: Publish @theaiinc/yggdrasil-ratatoskr
+        run: |
+          JWT=$(cat /tmp/oidc-jwt.txt)
+          TOKEN=$(curl -sS -X POST \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@theaiinc%2fyggdrasil-ratatoskr" \
+            -H "Authorization: Bearer $JWT" \
+            | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).token")
+          echo "//registry.npmjs.org/:_authToken=$TOKEN" > ~/.npmrc
           cd packages/ratatoskr && npm publish --access public
-          cd "$OLDPWD"
 
+      - name: Publish @theaiinc/yggdrasil-runtime
+        run: |
+          JWT=$(cat /tmp/oidc-jwt.txt)
+          TOKEN=$(curl -sS -X POST \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@theaiinc%2fyggdrasil-runtime" \
+            -H "Authorization: Bearer $JWT" \
+            | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).token")
+          echo "//registry.npmjs.org/:_authToken=$TOKEN" > ~/.npmrc
           cd packages/yggdrasil-runtime && npm publish --access public
-          cd "$OLDPWD"
 
+      - name: Publish @theaiinc/yggdrasiladmin-panel
+        run: |
+          JWT=$(cat /tmp/oidc-jwt.txt)
+          TOKEN=$(curl -sS -X POST \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@theaiinc%2fyggdrasiladmin-panel" \
+            -H "Authorization: Bearer $JWT" \
+            | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).token")
+          echo "//registry.npmjs.org/:_authToken=$TOKEN" > ~/.npmrc
           cd packages/yggdrasil-grafana-plugins
           npm install
           npm run build
