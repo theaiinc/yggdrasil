@@ -489,3 +489,21 @@ npm run build
 ```
 
 The `EXPECTED_RUNNER_VERSION` env var in Yggdrasil defaults to `YGGDRASIL_VERSION` (its own `package.json` version), so expected-runner-version stays in sync automatically. Override with `EXPECTED_RUNNER_VERSION` env var if you need a different expected version for testing.
+
+### CI automated npm publish
+
+When a GitHub Release is created (tag pushed), `.github/workflows/publish.yml` runs automatically:
+
+1. **`check-versions`** — Verifies all workspace packages share the root version
+2. **`publish`** — Runs `npm ci` at root, then publishes each non-private package to npm with `--provenance`:
+   - `@theaiinc/yggdrasil`
+   - `@theaiinc/yggdrasil-ratatoskr`
+   - `@theaiinc/yggdrasil-runtime`
+
+Requires `NPM_TOKEN` secret in the GitHub repository (an npm automation token with publish scope).
+
+#### One-time setup
+
+1. Generate an npm automation token: https://www.npmjs.com/settings/~/tokens
+2. Add it as a repository secret: `Settings → Secrets and variables → Actions → New repository secret`
+3. Name: `NPM_TOKEN`, value: the token

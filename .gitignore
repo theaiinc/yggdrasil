@@ -1,25 +1,6 @@
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Dependencies
 node_modules/
-
-# Production build
 dist/
-
-# Logs
-logs/
-*.log
-
-# Editor
-.DS_Store
-.idea/
-.vscode/
-
-# TypeScript
-*.tsbuildinfo
-
-# Nx cache
 .nx/
+*.tsbuildinfo
+.env
+.DS_Store
