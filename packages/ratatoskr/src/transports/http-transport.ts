@@ -21,6 +21,7 @@ import type {
  */
 export class HttpTransport implements Transport {
   private readonly client: AxiosInstance;
+  private currentApiKey: string;
 
   /**
    * @param baseUrl - The base URL of the Yggdrasil server (e.g. http://localhost:4000).
@@ -28,6 +29,7 @@ export class HttpTransport implements Transport {
    * @param timeout - Request timeout in milliseconds (default 5000).
    */
   constructor(baseUrl: string, apiKey?: string, timeout: number = 5000) {
+    this.currentApiKey = apiKey ?? '';
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -39,6 +41,15 @@ export class HttpTransport implements Transport {
       timeout,
       headers,
     });
+  }
+
+  /**
+   * Update the API key used for authentication.
+   * Called dynamically when Yggdrasil pushes a new key via heartbeat response.
+   */
+  setApiKey(apiKey: string): void {
+    this.currentApiKey = apiKey;
+    this.client.defaults.headers['X-API-Key'] = apiKey;
   }
 
   /**

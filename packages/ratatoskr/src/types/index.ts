@@ -229,6 +229,17 @@ export interface RunnerRegistration {
 }
 
 /**
+ * Status of a runner's self-update process, reported in heartbeat.
+ * Yggdrasil uses this to track update progress on remote runners.
+ */
+export type UpdateStatus =
+  | 'idle'
+  | 'pending'
+  | 'applying'
+  | 'failed'
+  | 'applied';
+
+/**
  * Heartbeat payload sent to Yggdrasil.
  */
 export interface HeartbeatPayload {
@@ -237,6 +248,10 @@ export interface HeartbeatPayload {
   status: RunnerHealth;
   resources?: SystemResources;
   tasks?: RunnerTask[];
+  /** Current update status reported by the UpdateManager. */
+  updateStatus?: UpdateStatus;
+  /** Update log tail (last N characters) for Yggdrasil-side debugging. */
+  updateLog?: string;
 }
 
 /**
@@ -261,6 +276,8 @@ export interface PendingUpdate {
   command?: string;
   /** URL to download a new binary/package from. */
   downloadUrl?: string;
+  /** New API key for Yggdrasil authentication. Runner applies this and starts using it immediately. */
+  apiKey?: string;
   /** Arbitrary metadata (e.g. Docker image tag, commit hash). */
   metadata?: Record<string, unknown>;
 }
@@ -341,6 +358,9 @@ export interface Transport {
   update(payload: EndpointUpdatePayload): Promise<void>;
   /** Deregister the runner. */
   deregister(payload: DeregisterPayload): Promise<void>;
+
+  /** Dynamically update the API key used for authenticating with Yggdrasil. */
+  setApiKey(apiKey: string): void;
 
   // ── Realm lifecycle relays (Realm → Ratatoskr → Yggdrasil) ─────────
 

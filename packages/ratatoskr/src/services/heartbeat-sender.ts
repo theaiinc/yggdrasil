@@ -1,4 +1,4 @@
-import { RunnerHealth, type HeartbeatPayload, type HeartbeatResponse } from '../types/index.js';
+import { RunnerHealth, type HeartbeatPayload, type HeartbeatResponse, type UpdateStatus } from '../types/index.js';
 import type { PendingUpdate } from '../types/index.js';
 import type { HealthMonitor } from './health-monitor.js';
 import type { Transport } from '../transports/transport.js';
@@ -11,8 +11,15 @@ import type { ResourceCollector } from './resource-collector.js';
 export type UpdateRequestedCallback = (update: PendingUpdate) => void;
 
 /**
+ * Provider for update status — called each heartbeat to include
+ * the current update progress in the payload for Yggdrasil observability.
+ */
+export type UpdateStatusProvider = () => { status: UpdateStatus; log: string };
+
+/**
  * Heartbeat sender that periodically sends health status to Yggdrasil.
  * Captures any pendingUpdate in the heartbeat response and fires a callback.
+ * Includes update status from the UpdateManager for remote observability.
  */
 export class HeartbeatSender {
   private readonly transport: Transport;
@@ -24,6 +31,7 @@ export class HeartbeatSender {
   private timerId: ReturnType<typeof setInterval> | undefined;
   private running: boolean = false;
   private onUpdateRequested: UpdateRequestedCallback | undefined;
+  private updateStatusProvider: UpdateStatusProvider | undefined;
 
   constructor(
     transport: Transport,
@@ -46,6 +54,13 @@ export class HeartbeatSender {
    */
   setOnUpdateRequested(cb: UpdateRequestedCallback): void {
     this.onUpdateRequested = cb;
+  }
+
+  /**
+   * Register a provider for the current update status (typically UpdateManager).
+   */
+  setUpdateStatusProvider(provider: UpdateStatusProvider): void {
+    this.updateStatusProvider = provider;
   }
 
   /**
@@ -87,6 +102,15 @@ export class HeartbeatSender {
       resources,
     };
 
+    // Include update status if provider is registered
+    if (this.updateStatusProvider) {
+      const { status, log } = this.updateStatusProvider();
+      if (status !== 'idle') {
+        payload.updateStatus = status;
+        payload.updateLog = log;
+      }
+    }
+
     try {
       const response = await this.retryManager.execute<HeartbeatResponse>(() =>
         this.transport.heartbeat(payload),
@@ -94,6 +118,16 @@ export class HeartbeatSender {
 
       if (response.pendingUpdate && this.onUpdateRequested) {
         console.log(`[HeartbeatSender] Update requested by Yggdrasil: version=${response.pendingUpdate.version}`);
+
+        // ── API key rotation ────────────────────────────────────────
+        // If Yggdrasil pushed a new API key, apply it immediately on
+        // the transport so the next request uses the new credential.
+        if (response.pendingUpdate.apiKey) {
+          console.log('[HeartbeatSender] API key rotation received from Yggdrasil — applying new key');
+          this.transport.setApiKey(response.pendingUpdate.apiKey);
+        }
+        // ────────────────────────────────────────────────────────────
+
         this.onUpdateRequested(response.pendingUpdate);
       }
     } catch {

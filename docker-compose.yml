@@ -10,12 +10,19 @@ services:
       - NODE_ENV=development
       - LOG_LEVEL=info
       - API_KEYS=${YGGDRASIL_API_KEY:-dev-api-key-123}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-admin-key-123}
       - LEASE_TTL_MS=60000
-      - EXPECTED_RUNNER_VERSION=${EXPECTED_RUNNER_VERSION:-0.1.0}
+      # Optionally override the expected runner version (defaults to Yggdrasil's own version)
+      # - EXPECTED_RUNNER_VERSION=0.2.0
+      # Uncomment for Docker self-update: POST /api/admin/self-update will shell out to this command
+      # Requires mounting the Docker socket (see volumes below):
+      # - DOCKER_UPDATE_COMMAND=docker compose -f /app/docker-compose.yml pull && docker compose -f /app/docker-compose.yml up -d -t 30
     env_file:
       - .env
     volumes:
       - ./packages/yggdrasil/logs:/app/logs
+      # Uncomment for Docker self-update (DOCKER_UPDATE_COMMAND must also be set):
+      # - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - prometheus
     networks:
@@ -26,6 +33,7 @@ services:
     build:
       context: packages/ratatoskr
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       - YGGDRASIL_URL=${YGGDRASIL_URL:-http://orchestration-controller:3000}
       - API_KEY=${YGGDRASIL_API_KEY:-dev-api-key-123}
@@ -64,9 +72,13 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ALLOW_EMBEDDING=true           # Allow iframing Yggdrasil admin panel
+      - GF_SECURITY_ALLOW_EMBEDDING=true         # Legacy alias
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=theaiinc-yggdrasiladmin-panel
     volumes:
       - grafana_data:/var/lib/grafana
       - ./packages/yggdrasil/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./packages/yggdrasil-grafana-plugins/dist:/var/lib/grafana/plugins/theaiinc-yggdrasiladmin-panel
     depends_on:
       - prometheus
     networks:

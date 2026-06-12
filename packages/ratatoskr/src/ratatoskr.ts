@@ -120,6 +120,12 @@ export class Ratatoskr {
       this.updateManager.requestUpdate(update);
     });
 
+    // Wire update status provider: each heartbeat includes current update progress
+    this.heartbeatSender.setUpdateStatusProvider(() => ({
+      status: this.updateManager.getStatus(),
+      log: this.updateManager.getLogTail(),
+    }));
+
     // Initialize TaskExecutor without preset handlers initially;
     // handler loading happens in start() via dynamic import
     if (this.config.taskPollInterval > 0) {
@@ -321,7 +327,7 @@ export class Ratatoskr {
     return {
       runnerId: this.config.runnerId,
       runnerName: this.config.name,
-      version: '0.1.0',
+      version: '0.1.0',  // overridden from package.json by Registrar
       endpoint: 'pending',
       lastHealth: RunnerHealth.HEALTHY,
       running: false,

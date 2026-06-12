@@ -1,6 +1,6 @@
 {
   "name": "@theaiinc/yggdrasil-ratatoskr",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Runner daemon for Yggdrasil — registration, heartbeat, task execution, Realm lifecycle relay, and LLM/agent capability presets",
   "author": "The AI Inc",
   "license": "MIT",

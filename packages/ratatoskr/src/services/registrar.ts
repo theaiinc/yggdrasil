@@ -4,6 +4,27 @@ import type { EndpointDetector } from './endpoint-detector.js';
 import type { RetryManager } from './retry-manager.js';
 import type { LeaseManager } from './lease-manager.js';
 import type { ResourceCollector } from './resource-collector.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+function findPackageVersion(startDir: string, maxDepth = 5): string {
+  let current = startDir;
+  for (let i = 0; i < maxDepth; i++) {
+    const candidate = resolve(current, 'package.json');
+    try {
+      return JSON.parse(readFileSync(candidate, 'utf-8')).version as string;
+    } catch {
+      current = dirname(current);
+    }
+  }
+  return '0.1.0';
+}
+
+const RATATOSKR_VERSION = findPackageVersion(__dirname);
 
 /**
  * Registrar handles runner registration and re-registration with Yggdrasil.
@@ -46,7 +67,7 @@ export class Registrar {
     this.resourceCollector = resourceCollector;
     this.runnerId = runnerId;
     this.runnerName = runnerName;
-    this.version = '0.1.0';
+    this.version = RATATOSKR_VERSION;
     this.capabilities = capabilities;
     this.realmTemplates = realmTemplates ?? [];
     this.labels = labels ?? {};

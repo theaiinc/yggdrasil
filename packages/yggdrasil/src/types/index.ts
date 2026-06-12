@@ -248,10 +248,22 @@ export interface SystemResources {
 
 export interface PendingUpdate {
   version: string;
+  /** Shell command to execute for the update (e.g. 'npm update -g @theaiinc/yggdrasil-ratatoskr'). */
   command?: string;
+  /** URL to download a new binary/package from. */
   downloadUrl?: string;
+  /** New API key for Yggdrasil authentication. Runner applies this and starts using it immediately. */
+  apiKey?: string;
+  /** Arbitrary metadata (e.g. Docker image tag, commit hash). */
   metadata?: Record<string, unknown>;
 }
+
+export type UpdateStatus =
+  | 'idle'
+  | 'pending'
+  | 'applying'
+  | 'failed'
+  | 'applied';
 
 export interface RunnerTask {
   taskId: string;
@@ -277,6 +289,10 @@ export interface RunnerInfo {
   resources?: SystemResources;
   tasks: RunnerTask[];
   pendingUpdate?: PendingUpdate;
+  /** Latest update status reported by the runner via heartbeat. */
+  updateStatus?: UpdateStatus;
+  /** Tail of the runner's update log (last N chars). */
+  updateLog?: string;
 }
 
 // ─── API request/response types ────────────────────────────────────────────
@@ -301,6 +317,10 @@ export interface HeartbeatPayload {
   status?: string;
   resources?: SystemResources;
   tasks?: RunnerTask[];
+  /** Update status reported by the runner. */
+  updateStatus?: UpdateStatus;
+  /** Tail of the runner's update log. */
+  updateLog?: string;
 }
 
 export interface HeartbeatResponse {

@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
 import helmet from 'helmet';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { getLogger } from './services/logger.js';
 import { nanoid } from 'nanoid';
 
@@ -9,12 +12,14 @@ import { RealmRegistry } from './services/realm-registry.js';
 import { RealmScheduler } from './services/realm-scheduler.js';
 import { RealmProvisioner } from './services/realm-provisioner.js';
 import { RealmLifecycleService } from './services/realm-lifecycle.js';
+import { NpmVersionChecker } from './services/npm-version-checker.js';
 
 import type {
   SystemResources,
   PendingUpdate,
   RunnerInfo,
   RunnerTask,
+  UpdateStatus,
   RegisterRunnerPayload,
   HeartbeatPayload,
   HeartbeatResponse,
@@ -45,6 +50,31 @@ const realmScheduler = new RealmScheduler(realmRegistry, (runnerId) => runners.g
 const realmProvisioner = new RealmProvisioner(realmRegistry);
 const realmLifecycle = new RealmLifecycleService(realmRegistry);
 
+// ─── Yggdrasil version ─────────────────────────────────────────
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Walk up from __dirname to find package.json (works from both src/ and dist/src/)
+function findPackageJson(startDir: string, maxDepth: number = 5): { version: string } {
+  let current = startDir;
+  for (let i = 0; i < maxDepth; i++) {
+    const candidate = resolve(current, 'package.json');
+    try {
+      return JSON.parse(readFileSync(candidate, 'utf-8')) as { version: string };
+    } catch {
+      current = dirname(current);
+    }
+  }
+  throw new Error('Could not find package.json');
+}
+
+const { version: YGGDRASIL_VERSION } = findPackageJson(__dirname);
+
+// ─── NPM version checker ───────────────────────────────────────
+
+const npmVersionChecker = new NpmVersionChecker('@theaiinc/yggdrasil', YGGDRASIL_VERSION);
+
 // ─── API key authentication ─────────────────────────────────────
 
 const API_KEYS: string[] =
@@ -54,7 +84,8 @@ const API_KEYS: string[] =
     .filter(k => k !== '');
 
 function apiKeyAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
-  if (req.path === '/health' || req.path === '/metrics') {
+  // Allow unauthenticated access to health, metrics, admin APIs (admin is secured separately)
+  if (req.path === '/health' || req.path === '/metrics' || req.path.startsWith('/api/admin/')) {
     next();
     return;
   }
@@ -74,7 +105,10 @@ function apiKeyAuth(req: express.Request, res: express.Response, next: express.N
 
 // ─── Middleware ──────────────────────────────────────────────────
 
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({
+  contentSecurityPolicy: false,
+  frameguard: false,       // Allow iframing by Grafana (different port)
+}));
 app.use(cors());
 app.use(compression());
 app.use(express.json());
@@ -97,7 +131,7 @@ app.get('/health', (_req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '0.1.0',
+    version: YGGDRASIL_VERSION,
     uptime: process.uptime(),
     runners: {
       total: runners.size,
@@ -142,7 +176,22 @@ app.get('/metrics', (_req, res) => {
     '# HELP yggdrasil_tasks_running Number of currently running tasks across all runners',
     '# TYPE yggdrasil_tasks_running gauge',
     `yggdrasil_tasks_running ${tasksRunning}`,
+    '# HELP yggdrasil_api_keys_total Number of configured API keys',
+    '# TYPE yggdrasil_api_keys_total gauge',
+    `yggdrasil_api_keys_total ${API_KEYS.length}`,
+    '# HELP yggdrasil_version_info Current Yggdrasil version (always 1) — label carries the running version',
+    '# TYPE yggdrasil_version_info gauge',
+    `yggdrasil_version_info{version="${escapePrometheusLabelValue(YGGDRASIL_VERSION)}"} 1`,
   ];
+
+  const npmInfo = npmVersionChecker.getInfo();
+  if (npmInfo.latest) {
+    metrics.push(
+      '# HELP yggdrasil_npm_latest_version Latest Yggdrasil version on npm (always 1) — label carries the latest version',
+      '# TYPE yggdrasil_npm_latest_version gauge',
+      `yggdrasil_npm_latest_version{current="${escapePrometheusLabelValue(npmInfo.current)}",latest="${escapePrometheusLabelValue(npmInfo.latest)}"} 1`,
+    );
+  }
 
   if (EXPECTED_RUNNER_VERSION) {
     metrics.push(
@@ -223,6 +272,46 @@ app.get('/metrics', (_req, res) => {
     }
   }
 
+  // Runners with a pending API key rotation (subset of pendingUpdateRunners)
+  const pendingApiKeyRotations = pendingUpdateRunners.filter(([, r]) => r.pendingUpdate?.apiKey);
+  if (pendingApiKeyRotations.length > 0) {
+    metrics.push(
+      '# HELP yggdrasil_runner_pending_api_key_rotation Pending API key rotation flag per runner (1 = pending)',
+      '# TYPE yggdrasil_runner_pending_api_key_rotation gauge',
+    );
+    for (const [id, runner] of pendingApiKeyRotations) {
+      metrics.push(`yggdrasil_runner_pending_api_key_rotation{${runnerLabels(id, runner.name)}} 1`);
+    }
+  }
+
+  // Update status metric: track the self-update progress of each runner
+  const runnersWithUpdateStatus = snapshot.filter(([, r]) => r.updateStatus && r.updateStatus !== 'idle');
+  if (runnersWithUpdateStatus.length > 0) {
+    metrics.push(
+      '# HELP yggdrasil_runner_update_status Self-update status of each runner (1 = current status)',
+      '# TYPE yggdrasil_runner_update_status gauge',
+    );
+    for (const [id, runner] of runnersWithUpdateStatus) {
+      const statusLabels = `${runnerLabels(id, runner.name)},status="${escapePrometheusLabelValue(runner.updateStatus!)}"`;
+      metrics.push(`yggdrasil_runner_update_status{${statusLabels}} 1`);
+    }
+  }
+
+  // Runner update log tail — exposed as an info-style metric for operator visibility.
+  // Grafana can display this via a text panel or the AdminPanel component.
+  const runnersWithUpdateLog = snapshot.filter(([, r]) => r.updateLog);
+  if (runnersWithUpdateLog.length > 0) {
+    metrics.push(
+      '# HELP yggdrasil_runner_update_log Raw update log tail per runner — last ~2KB of output',
+      '# TYPE yggdrasil_runner_update_log gauge',
+    );
+    for (const [id, runner] of runnersWithUpdateLog) {
+      const logLabels = `${runnerLabels(id, runner.name)},status="${escapePrometheusLabelValue(runner.updateStatus || 'idle')}"`;
+      const truncated = runner.updateLog!.slice(-2000).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+      metrics.push(`yggdrasil_runner_update_log{${logLabels},log="${truncated}"} 1`);
+    }
+  }
+
   res.set('Content-Type', 'text/plain; charset=utf-8');
   res.send(metrics.join('\n') + '\n');
 });
@@ -283,6 +372,8 @@ app.post('/runners/heartbeat', (req, res) => {
     status?: string;
     resources?: SystemResources;
     tasks?: RunnerTask[];
+    updateStatus?: UpdateStatus;
+    updateLog?: string;
   };
   const runnerId = body.runnerId;
   if (!runnerId || !runners.has(runnerId)) {
@@ -299,6 +390,11 @@ app.post('/runners/heartbeat', (req, res) => {
   if (body.tasks) {
     runner.tasks = body.tasks;
   }
+  // Store update status reported by the runner (for observability)
+  if (body.updateStatus) {
+    runner.updateStatus = body.updateStatus;
+    runner.updateLog = body.updateLog ?? '';
+  }
 
   // If there is a pending update, include it in the response and clear it
   const pendingUpdate = runner.pendingUpdate;
@@ -306,7 +402,7 @@ app.post('/runners/heartbeat', (req, res) => {
     delete runner.pendingUpdate;
   }
 
-  logger.debug('Runner heartbeat received', { runnerId, hasPendingUpdate: !!pendingUpdate });
+  logger.debug('Runner heartbeat received', { runnerId, hasPendingUpdate: !!pendingUpdate, updateStatus: body.updateStatus });
   res.json({ status: 'ok', ...(pendingUpdate ? { pendingUpdate } : {}) });
 });
 
@@ -821,9 +917,411 @@ app.post('/api/v1/realms/deregister', (req, res) => {
 // ─── Lease-based offline detection ──────────────────────────────
 
 const LEASE_TTL_MS = parseInt(process.env['LEASE_TTL_MS'] || '60000', 10);
-const EXPECTED_RUNNER_VERSION = process.env['EXPECTED_RUNNER_VERSION'] || '';
+let EXPECTED_RUNNER_VERSION = process.env['EXPECTED_RUNNER_VERSION'] || YGGDRASIL_VERSION;
+
+// ─── Admin API authentication ────────────────────────────────
+// Separate admin API key for privileged operations (key rotation, etc.)
+const ADMIN_API_KEY = process.env['ADMIN_API_KEY'] || '';
+
+function adminKeyAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  if (!ADMIN_API_KEY) {
+    next();
+    return;
+  }
+  const apiKey = req.headers['x-admin-api-key'] as string | undefined;
+  if (!apiKey || apiKey !== ADMIN_API_KEY) {
+    res.status(401).json({ error: 'Unauthorized: invalid or missing admin API key' });
+    return;
+  }
+  next();
+}
+
+// ─── Admin API routes ───────────────────────────────────────
+// These are mounted BEFORE the global auth middleware via early path check,
+// and secured separately with adminKeyAuth.
+
+/**
+ * Rotate / add a new API key and optionally push it to selected Ratatoskr runners.
+ *
+ * POST /api/admin/api-keys/rotate
+ * Body: {
+ *   newApiKey: string;           // Required: the new API key to add
+ *   runnerIds?: string[];        // Ratatoskrs to receive the new key (empty = none)
+ * }
+ *
+ * - The new key is added to Yggdrasil's accepted list immediately.
+ * - A pendingUpdate with apiKey is set for each selected runner so the
+ *   next heartbeat response delivers the new key to Ratatoskr.
+ * - If runnerIds is omitted or empty, NO Ratatoskrs receive the key
+ *   (manual configuration required on each Ratatoskr).
+ */
+app.post('/api/admin/api-keys/rotate', adminKeyAuth, (req, res) => {
+  const body = req.body as {
+    newApiKey?: string;
+    runnerIds?: string[];
+  };
+
+  if (!body.newApiKey || body.newApiKey.trim().length === 0) {
+    res.status(400).json({ error: 'newApiKey is required and must be non-empty' });
+    return;
+  }
+
+  const normalizedKey = body.newApiKey.trim();
+
+  // 1. Add the key to Yggdrasil's accepted list if not already present
+  if (!API_KEYS.includes(normalizedKey)) {
+    API_KEYS.push(normalizedKey);
+  }
+
+  // 2. Determine which runners to notify
+  const targetRunnerIds = body.runnerIds ?? [];
+  const notified: string[] = [];
+  const skipped: string[] = [];
+
+  if (targetRunnerIds.length === 0) {
+    // Default: no automatic distribution — manual config required on Ratatoskr
+    logger.info('API key rotated with no target runners — manual configuration required on Ratatoskr instances', {
+      newKeyPrefix: normalizedKey.substring(0, 8) + '…',
+      totalKeys: API_KEYS.length,
+    });
+
+    res.json({
+      status: 'rotated',
+      newApiKeyPrefix: normalizedKey.substring(0, 8) + '…',
+      totalActiveKeys: API_KEYS.length,
+      notifiedRunners: [],
+      skippedRunners: [],
+      message: 'No Ratatoskr instances selected. Each instance must be configured manually.',
+    });
+    return;
+  }
+
+  // 3. Push the new key via pendingUpdate on each target runner's heartbeat
+  for (const runnerId of targetRunnerIds) {
+    const runner = runners.get(runnerId);
+    if (!runner) {
+      skipped.push(runnerId);
+      continue;
+    }
+
+    runner.pendingUpdate = {
+      version: runner.version,
+      apiKey: normalizedKey,
+    };
+    notified.push(runnerId);
+  }
+
+  logger.info('API key rotated and pushed to selected Ratatoskr runners', {
+    newKeyPrefix: normalizedKey.substring(0, 8) + '…',
+    totalKeys: API_KEYS.length,
+    notifiedCount: notified.length,
+    skippedCount: skipped.length,
+    notifiedRunners: notified,
+    skippedRunners: skipped,
+  });
+
+  res.json({
+    status: 'rotated',
+    newApiKeyPrefix: normalizedKey.substring(0, 8) + '…',
+    totalActiveKeys: API_KEYS.length,
+    notifiedRunners: notified,
+    skippedRunners: skipped,
+  });
+});
+
+/**
+ * Set the expected runner version that Yggdrasil considers current.
+ * Outdated runners are exposed via the yggdrasil_runner_outdated metric.
+ *
+ * POST /api/admin/expected-version
+ * Body: { version: string }
+ *
+ * This is useful for proactively notifying the operator (via Grafana alert)
+ * that some Ratatoskr instances are running an older version.
+ */
+app.post('/api/admin/expected-version', adminKeyAuth, (req, res) => {
+  const body = req.body as { version?: string };
+
+  if (!body.version || body.version.trim().length === 0) {
+    res.status(400).json({ error: 'version is required and must be non-empty' });
+    return;
+  }
+
+  const previous = EXPECTED_RUNNER_VERSION;
+  EXPECTED_RUNNER_VERSION = body.version.trim();
+
+  logger.info('Expected runner version updated', {
+    previous: previous || '(not set)',
+    current: EXPECTED_RUNNER_VERSION,
+  });
+
+  res.json({
+    status: 'updated',
+    previous: previous || null,
+    current: EXPECTED_RUNNER_VERSION,
+  });
+});
+
+/**
+ * List all registered runners with minimal details (for dashboard dropdowns / selection).
+ *
+ * GET /api/admin/runners
+ */
+app.get('/api/admin/runners', adminKeyAuth, (_req, res) => {
+  const runnerList = Array.from(runners.entries()).map(([id, r]) => ({
+    runnerId: id,
+    name: r.name,
+    version: r.version,
+    status: r.status,
+    lastHeartbeat: r.lastHeartbeat,
+    outdated: EXPECTED_RUNNER_VERSION ? r.version !== EXPECTED_RUNNER_VERSION : false,
+    hasPendingUpdate: !!r.pendingUpdate,
+    hasPendingApiKey: !!r.pendingUpdate?.apiKey,
+    updateStatus: r.updateStatus ?? 'idle',
+    updateLog: r.updateLog ?? '',
+  }));
+
+  res.json({
+    runners: runnerList,
+    expectedVersion: EXPECTED_RUNNER_VERSION || null,
+    count: runnerList.length,
+  });
+});
+
+/**
+ * Get the update log tail for a specific runner.
+ * The log is reported by the runner via heartbeat, so it's always fresh.
+ *
+ * GET /api/admin/runners/:runnerId/update-log
+ */
+app.get('/api/admin/runners/:runnerId/update-log', adminKeyAuth, (req, res) => {
+  const runnerId = req.params.runnerId;
+  if (!runnerId) {
+    res.status(400).json({ error: 'runnerId parameter is required' });
+    return;
+  }
+  const runner = runners.get(runnerId);
+  if (!runner) {
+    res.status(404).json({ error: 'Runner not found' });
+    return;
+  }
+
+  res.json({
+    runnerId: runner.runnerId,
+    name: runner.name,
+    updateStatus: runner.updateStatus ?? 'idle',
+    updateLog: runner.updateLog ?? '',
+  });
+});
+
+/**
+ * Request an update for one or more Ratatoskr runners.
+ * The update is stored and delivered on the next heartbeat response.
+ *
+ * POST /api/admin/runners/request-update
+ * Body: {
+ *   runnerIds: string[];              // Ratatoskrs to update (ALL = all, [] = none)
+ *   version: string;                  // Target version
+ *   command?: string;                 // Update command
+ *   downloadUrl?: string;             // Download URL for new binary
+ * }
+ *
+ * - If runnerIds is ["ALL"], every registered runner gets the update.
+ * - If runnerIds is [], no runners receive the update.
+ * - Each selected runner gets a pendingUpdate set on its record,
+ *   delivered on the next heartbeat.
+ */
+app.post('/api/admin/runners/request-update', adminKeyAuth, (req, res) => {
+  const body = req.body as {
+    runnerIds?: string[];
+    version?: string;
+    command?: string;
+    downloadUrl?: string;
+  };
+
+  if (!body.version || body.version.trim().length === 0) {
+    res.status(400).json({ error: 'version is required and must be non-empty' });
+    return;
+  }
+
+  const targetVersion = body.version.trim();
+
+  // Resolve runnerIds: "ALL" = every runner, [] = none
+  const rawIds = body.runnerIds ?? [];
+  const targetRunnerIds: string[] = rawIds.length === 1 && rawIds[0] === 'ALL'
+    ? Array.from(runners.keys())
+    : rawIds;
+
+  const notified: string[] = [];
+  const skipped: string[] = [];
+
+  if (targetRunnerIds.length === 0) {
+    logger.info('Version update requested with no target runners', {
+      version: targetVersion,
+    });
+    res.json({
+      status: 'version_set',
+      expectedVersion: targetVersion,
+      notifiedRunners: [],
+      skippedRunners: [],
+      message: 'No Ratatoskr instances selected. Use runnerIds: ["ALL"] or a list of runner IDs.',
+    });
+    return;
+  }
+
+  for (const runnerId of targetRunnerIds) {
+    const runner = runners.get(runnerId);
+    if (!runner) {
+      skipped.push(runnerId);
+      continue;
+    }
+
+    runner.pendingUpdate = {
+      version: targetVersion,
+      ...(body.command !== undefined ? { command: body.command } : {}),
+      ...(body.downloadUrl !== undefined ? { downloadUrl: body.downloadUrl } : {}),
+    };
+    notified.push(runnerId);
+  }
+
+  logger.info('Version update requested for selected Ratatoskr runners', {
+    version: targetVersion,
+    notifiedCount: notified.length,
+    skippedCount: skipped.length,
+    notifiedRunners: notified,
+    skippedRunners: skipped,
+  });
+
+  res.json({
+    status: 'update_requested',
+    version: targetVersion,
+    notifiedRunners: notified,
+    skippedRunners: skipped,
+  });
+});
+
+/**
+ * Self-update and restart Yggdrasil.
+ *
+ * POST /api/admin/self-update
+ *
+ * Behavior depends on the deployment method:
+ *
+ *   **npm (default):** Runs `npm update -g @theaiinc/yggdrasil` to fetch the
+ *   latest version, then sends SIGTERM for the process manager to restart.
+ *   Nothing happens if already on the latest version.
+ *
+ *   **Docker:** Does NOT run automatically (Docker-in-Docker is unsafe by
+ *   default). Instead, the operator should define `DOCKER_UPDATE_COMMAND`
+ *   env var (e.g. `docker compose pull && docker compose up -d -t 30`).
+ *   If set, Yggdrasil shells out to that command.
+ *
+ * Safe to call even when already on the latest version — it's idempotent.
+ */
+app.post('/api/admin/self-update', adminKeyAuth, async (req, res) => {
+  const npmInfo = npmVersionChecker.getInfo();
+  const dockerUpdateCommand = process.env['DOCKER_UPDATE_COMMAND']?.trim();
+
+  logger.info('Self-update requested via admin API', {
+    npm: { current: npmInfo.current, latest: npmInfo.latest, hasNew: npmInfo.hasNewVersion },
+    dockerUpdateCommand: dockerUpdateCommand ? 'configured' : 'not set',
+  });
+
+  // ── Docker path ──────────────────────────────────────────
+  if (dockerUpdateCommand) {
+    if (!npmInfo.latest) {
+      res.json({
+        status: 'update_skipped',
+        reason: 'Could not determine latest npm version (check may still be in progress or npm unreachable). Try again in a few minutes.',
+        currentVersion: npmInfo.current,
+      });
+      return;
+    }
+
+    res.json({
+      status: 'update_started',
+      currentVersion: npmInfo.current,
+      latestVersion: npmInfo.latest,
+      command: dockerUpdateCommand,
+      message: `Executing "${dockerUpdateCommand}". Yggdrasil will be unavailable during the update. Check Docker logs for progress.`,
+    });
+
+    // Respond first, then execute the update command
+    setTimeout(async () => {
+      try {
+        const { execSync } = await import('child_process');
+        logger.info('Executing Docker update command', { command: dockerUpdateCommand });
+        execSync(dockerUpdateCommand, { stdio: 'inherit', timeout: 120_000 });
+        logger.info('Docker update command completed');
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error('Docker update command failed', { error: message });
+      }
+    });
+    return;
+  }
+
+  // ── npm path ─────────────────────────────────────────────
+  // Check if we're already up to date
+  if (npmInfo.latest && npmInfo.latest === npmInfo.current) {
+    res.json({
+      status: 'already_up_to_date',
+      currentVersion: npmInfo.current,
+      message: `Yggdrasil is already on version ${npmInfo.current}. No update needed.`,
+    });
+    return;
+  }
+
+  if (!npmInfo.latest) {
+    // Try a fresh check now before giving up
+    await npmVersionChecker.check();
+    const freshInfo = npmVersionChecker.getInfo();
+
+    if (!freshInfo.latest || freshInfo.latest === freshInfo.current) {
+      res.json({
+        status: 'update_skipped',
+        reason: 'Could not determine latest npm version (check may still be in progress or npm unreachable). Try again in a few minutes.',
+        currentVersion: freshInfo.current,
+      });
+      return;
+    }
+  }
+
+  const targetVersion = npmVersionChecker.getInfo().latest!;
+
+  logger.info('Running npm self-update', {
+    from: npmInfo.current,
+    to: targetVersion,
+  });
+
+  res.json({
+    status: 'update_started',
+    currentVersion: npmInfo.current,
+    latestVersion: targetVersion,
+    message: `Upgrading to ${targetVersion} via npm. Yggdrasil will restart once complete.`,
+  });
+
+  // Respond first, then run update + restart
+  setTimeout(async () => {
+    try {
+      const { execSync } = await import('child_process');
+      execSync('npm update -g @theaiinc/yggdrasil', { stdio: 'inherit', timeout: 120_000 });
+      logger.info('npm update completed — restarting Yggdrasil', { newVersion: targetVersion });
+
+      // Give the log a moment to flush, then restart
+      setTimeout(() => {
+        process.kill(process.pid, 'SIGTERM');
+      }, 1000);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('npm self-update failed', { error: message });
+    }
+  }, 500);
+});
 
 if (typeof process.env.VITEST === 'undefined') {
+  // Start npm version checker (poll every 30 minutes)
+  npmVersionChecker.start();
   // Runner lease TTL check
   setInterval(() => {
     const now = Date.now();
@@ -862,11 +1360,13 @@ if (typeof process.env.VITEST === 'undefined') {
     logger.info('Orchestration controller started (runner-only mode via Ratatoskr)', {
       port: PORT,
       environment: process.env['NODE_ENV'] || 'development',
+      version: YGGDRASIL_VERSION,
       apiKeysConfigured: API_KEYS.length > 0,
+      adminApiKeyConfigured: ADMIN_API_KEY.length > 0,
       leaseTtlMs: LEASE_TTL_MS,
     });
   });
 }
 
-export { app, runners, sessions, realmRegistry, realmScheduler, realmProvisioner, realmLifecycle };
+export { app, runners, sessions, realmRegistry, realmScheduler, realmProvisioner, realmLifecycle, npmVersionChecker, YGGDRASIL_VERSION };
 

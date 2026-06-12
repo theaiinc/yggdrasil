@@ -1,12 +1,14 @@
 // Main entry point for @theaiinc/yggdrasil package
 
 export { Logger } from './services/logger.js';
-export { app, runners, sessions, realmRegistry, realmScheduler, realmProvisioner, realmLifecycle } from './orchestration-controller.js';
+export { app, runners, sessions, realmRegistry, realmScheduler, realmProvisioner, realmLifecycle, npmVersionChecker, YGGDRASIL_VERSION } from './orchestration-controller.js';
 
 export { RealmRegistry } from './services/realm-registry.js';
 export { RealmScheduler } from './services/realm-scheduler.js';
 export { RealmProvisioner } from './services/realm-provisioner.js';
 export { RealmLifecycleService } from './services/realm-lifecycle.js';
+export { NpmVersionChecker } from './services/npm-version-checker.js';
+export type { NpmVersionInfo } from './services/npm-version-checker.js';
 
 // Export all runtime types (controller wire protocol)
 export type {

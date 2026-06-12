@@ -4,7 +4,7 @@
   "tags": ["yggdrasil", "runners"],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 3,
+  "version": 5,
   "refresh": "10s",
   "panels": [
     {
@@ -144,7 +144,7 @@
     {
       "title": "Pending Updates",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 3, "x": 9, "y": 0 },
+      "gridPos": { "h": 6, "w": 2, "x": 9, "y": 0 },
       "id": 13,
       "options": {
         "colorMode": "background",
@@ -179,7 +179,7 @@
     {
       "title": "Server Uptime",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 0 },
+      "gridPos": { "h": 6, "w": 3, "x": 11, "y": 0 },
       "id": 5,
       "options": {
         "colorMode": "background",
@@ -210,9 +210,94 @@
       ]
     },
     {
+      "title": "Yggdrasil Version",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 14, "y": 0 },
+      "id": 21,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "mappings": [
+            {
+              "options": {
+                "match": "1"
+              },
+              "type": "value",
+              "value": "1"
+            }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "none",
+          "displayName": "version"
+        }
+      },
+      "targets": [
+        {
+          "expr": "yggdrasil_version_info{job=\"orchestration-controller\"}",
+          "legendFormat": "{{version}}",
+          "refId": "A"
+        }
+      ],
+      "description": "The version of Yggdrasil currently running."
+    },
+    {
+      "title": "NPM Latest",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 17, "y": 0 },
+      "id": 22,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "options": {
+                "match": "1"
+              },
+              "type": "value",
+              "value": "1"
+            }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 0 }
+          ]},
+          "unit": "none",
+          "displayName": "latest"
+        }
+      },
+      "targets": [
+        {
+          "expr": "yggdrasil_npm_latest_version{job=\"orchestration-controller\"}",
+          "legendFormat": "{{latest}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Latest version of @theaiinc/yggdrasil published on npm. Green = up to date, Red = new version available."
+    },
+    {
       "title": "Expected Version",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 0 },
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 0 },
       "id": 16,
       "options": {
         "colorMode": "background",
@@ -226,21 +311,31 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "color": { "mode": "thresholds" },
           "mappings": [
-            { "options": {}, "type": "value", "value": "1" }
+            {
+              "options": {
+                "1": { "color": "purple", "text": "" }
+              },
+              "type": "value"
+            }
           ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "purple", "value": null }] },
-          "unit": "none"
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "dark-gray", "value": null },
+            { "color": "purple", "value": 1 }
+          ]},
+          "unit": "none",
+          "displayName": "version"
         }
       },
       "targets": [
         {
           "expr": "yggdrasil_expected_runner_version{job=\"orchestration-controller\"}",
-          "legendFormat": "Expected",
+          "legendFormat": "{{version}}",
           "refId": "A"
         }
-      ]
+      ],
+      "description": "The version Yggdrasil considers current. Set via POST /api/admin/expected-version in the Admin Commands panel."
     },
     {
       "title": "Runners Over Time",
@@ -453,6 +548,160 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "title": "Active API Keys",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 3, "x": 0, "y": 30 },
+      "id": 17,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "values": false },
+        "textMode": "auto",
+        "showPercentChange": false,
+        "wideLayout": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 1 }
+          ]},
+          "unit": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "yggdrasil_api_keys_total{job=\"orchestration-controller\"}",
+          "legendFormat": "Active",
+          "refId": "A"
+        }
+      ],
+      "description": "Number of API keys currently accepted by Yggdrasil"
+    },
+    {
+      "title": "Pending API Key Rotations",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 9, "x": 3, "y": 30 },
+      "id": 18,
+      "options": {
+        "footer": { "show": false, "reducers": [] },
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Runner" }],
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "unit": "none",
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": false,
+            "minWidth": 120,
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          }
+        }
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "expr": "yggdrasil_runner_pending_api_key_rotation{job=\"orchestration-controller\"}",
+          "format": "table",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "description": "Ratatoskr runners with a pending API key rotation (will receive new key on next heartbeat)"
+    },
+    {
+      "title": "Yggdrasil Admin",
+      "type": "theaiinc-yggdrasiladmin-panel",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 36 },
+      "id": 19,
+      "options": {
+        "yggdrasilUrl": "http://localhost:3000",
+        "adminApiKey": "admin-key-123"
+      },
+      "pluginVersion": "0.1.0"
+    },
+    {
+      "title": "Outdated Runners",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 43 },
+      "id": 20,
+      "options": {
+        "footer": { "show": false, "reducers": [] },
+        "showHeader": true,
+        "sortBy": [{ "desc": false, "displayName": "Runner" }],
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 0 }
+          ]},
+          "unit": "none",
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": false,
+            "minWidth": 120,
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          }
+        }
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        }
+      ],
+      "targets": [
+        {
+          "expr": "yggdrasil_runner_version_info{job=\"orchestration-controller\"}",
+          "format": "table",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        },
+        {
+          "expr": "yggdrasil_runner_outdated{job=\"orchestration-controller\"}",
+          "format": "table",
+          "legendFormat": "",
+          "refId": "B",
+          "instant": true
+        },
+        {
+          "expr": "yggdrasil_expected_runner_version{job=\"orchestration-controller\"}",
+          "format": "table",
+          "legendFormat": "",
+          "refId": "C",
+          "instant": true
+        }
+      ],
+      "description": "Runners whose version differs from the expected version. Set expected version via the Admin Commands panel."
     }
   ]
 }

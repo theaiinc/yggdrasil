@@ -1,6 +1,6 @@
 {
   "name": "@theaiinc/yggdrasil-runtime",
-  "version": "0.1.1",
+  "version": "0.3.1",
   "description": "ComputerUseRuntime implementation that bridges Cognition to Yggdrasil + Realm — the remote desktop automation backend for Oasis",
   "author": "The AI Inc",
   "license": "MIT",
