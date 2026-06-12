@@ -1,6 +1,6 @@
 {
   "name": "@theaiinc/yggdrasiladmin-panel",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Grafana panel plugin for managing Yggdrasil runners — update, restart, rotate keys, and monitor agent fleet health directly from Grafana.",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
