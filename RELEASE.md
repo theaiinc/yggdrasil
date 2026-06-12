@@ -46,9 +46,14 @@ git commit -m "chore: sync package versions to $(node -p "require('./package.jso
 VERSION=v$(node -p "require('./package.json').version")
 git tag -a "$VERSION" -m "release $VERSION"
 
-# 9. Push everything
+# 9. Push everything — this triggers the CI publish workflow
 git push origin main --tags
 ```
+
+## Automation
+
+Pushing a tag triggers `.github/workflows/publish.yml`, which automatically publishes
+all non-private packages to npm. No manual `npm publish` needed.
 
 ## Version tags
 
