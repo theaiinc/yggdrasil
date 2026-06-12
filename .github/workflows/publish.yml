@@ -12,42 +12,21 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.target_commitish }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 24
-
-      - name: Debug environment
-        run: |
-          echo "=== npm version ==="
-          npm --version
-          echo "=== node version ==="
-          node --version
-          echo "=== npm config list ==="
-          npm config list
-          echo "=== NPM_CONFIG_USERCONFIG ==="
-          echo "$NPM_CONFIG_USERCONFIG"
-          echo "=== files in NPM_CONFIG_USERCONFIG dir ==="
-          if [ -n "$NPM_CONFIG_USERCONFIG" ]; then
-            ls -la "$(dirname "$NPM_CONFIG_USERCONFIG")"
-          fi
-          echo "=== ~/.npmrc ==="
-          cat ~/.npmrc 2>/dev/null || echo "(none)"
-          echo "=== ACTIONS_ID_TOKEN_REQUEST_TOKEN exists ==="
-          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then echo "yes"; else echo "no"; fi
-          echo "=== ACTIONS_ID_TOKEN_REQUEST_URL ==="
-          echo "$ACTIONS_ID_TOKEN_REQUEST_URL"
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false  # never use caching in release builds
 
       - run: npm install
       - run: npm run check-versions
 
       - name: Publish all packages
         run: |
-          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
-
           npm publish -w packages/yggdrasil --access public
           npm publish -w packages/ratatoskr --access public
           npm publish -w packages/yggdrasil-runtime --access public
