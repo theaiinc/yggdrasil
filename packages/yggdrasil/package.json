@@ -1,6 +1,6 @@
 {
   "name": "@theaiinc/yggdrasil",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Distributed runner orchestration controller — registration, heartbeat, task dispatch, lease management, Realm lifecycle, and Prometheus metrics for Ratatoskr agents",
   "author": "The AI Inc",
   "license": "MIT",
