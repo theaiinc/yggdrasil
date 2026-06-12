@@ -26,28 +26,25 @@ jobs:
       - run: npm run check-versions
 
       - name: Publish @theaiinc/yggdrasil
-        run: |
-          unset NODE_AUTH_TOKEN
-          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
-          npm publish -w packages/yggdrasil --access public
+        env:
+          NODE_AUTH_TOKEN: ""
+        run: npm publish -w packages/yggdrasil --access public
 
       - name: Publish @theaiinc/yggdrasil-ratatoskr
-        run: |
-          unset NODE_AUTH_TOKEN
-          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
-          npm publish -w packages/ratatoskr --access public
+        env:
+          NODE_AUTH_TOKEN: ""
+        run: npm publish -w packages/ratatoskr --access public
 
       - name: Publish @theaiinc/yggdrasil-runtime
-        run: |
-          unset NODE_AUTH_TOKEN
-          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
-          npm publish -w packages/yggdrasil-runtime --access public
+        env:
+          NODE_AUTH_TOKEN: ""
+        run: npm publish -w packages/yggdrasil-runtime --access public
 
       - name: Publish @theaiinc/yggdrasiladmin-panel
+        env:
+          NODE_AUTH_TOKEN: ""
         working-directory: packages/yggdrasil-grafana-plugins
         run: |
-          unset NODE_AUTH_TOKEN
-          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
           npm install
           npm run build
           npm publish --access public
