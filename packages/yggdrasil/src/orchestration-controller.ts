@@ -5,6 +5,11 @@ import helmet from 'helmet';
 import { getLogger } from './services/logger.js';
 import { nanoid } from 'nanoid';
 
+import { RealmRegistry } from './services/realm-registry.js';
+import { RealmScheduler } from './services/realm-scheduler.js';
+import { RealmProvisioner } from './services/realm-provisioner.js';
+import { RealmLifecycleService } from './services/realm-lifecycle.js';
+
 import type {
   SystemResources,
   PendingUpdate,
@@ -14,12 +19,31 @@ import type {
   HeartbeatPayload,
   HeartbeatResponse,
   RequestUpdatePayload,
+  CreateSessionRequest,
+  CreateSessionResponse,
+  SessionDescriptor,
+  SessionHealth,
+  RealmTemplateType,
+  SessionCapability,
+  RealmTemplate,
+  Realm,
+  RealmAllocation,
+  RealmRegistration,
+  RealmHeartbeat,
+  RealmDeregistration,
 } from './types/index.js';
 
 const app = express();
 const logger = getLogger();
 
 const runners = new Map<string, RunnerInfo>();
+
+// ─── Realm lifecycle services ───────────────────────────────────
+
+const realmRegistry = new RealmRegistry();
+const realmScheduler = new RealmScheduler(realmRegistry, (runnerId) => runners.get(runnerId));
+const realmProvisioner = new RealmProvisioner(realmRegistry);
+const realmLifecycle = new RealmLifecycleService(realmRegistry);
 
 // ─── API key authentication ─────────────────────────────────────
 
@@ -212,6 +236,7 @@ app.post('/runners/register', (req, res) => {
     endpoint?: string;
     version?: string;
     capabilities?: string[];
+    realmTemplates?: Array<{ id: string; type: string; capabilities: string[] }>;
     labels?: Record<string, string>;
     metadata?: Record<string, unknown>;
     resources?: SystemResources;
@@ -220,14 +245,22 @@ app.post('/runners/register', (req, res) => {
 
   const runnerId = body.runnerId || nanoid();
 
-  // Upsert: preserve existing tasks when re-registering (lease expiry, reconnect)
+  // Upsert: preserve existing tasks and templates when re-registering (lease expiry, reconnect)
   const existing = runners.get(runnerId);
+
+  const templates: RealmTemplate[] = (body.realmTemplates ?? []).map(t => ({
+    id: t.id,
+    type: t.type as RealmTemplateType,
+    capabilities: (t.capabilities ?? []) as SessionCapability[],
+  }));
+
   runners.set(runnerId, {
     runnerId,
     name: body.name || 'unknown',
     endpoint: body.endpoint || 'unknown',
     version: body.version || '0.1.0',
     capabilities: body.capabilities || [],
+    realmTemplates: templates,
     labels: body.labels || {},
     lastHeartbeat: new Date(),
     status: 'online',
@@ -235,6 +268,9 @@ app.post('/runners/register', (req, res) => {
     // Preserve existing tasks on re-registration
     tasks: existing?.tasks ?? body.tasks ?? [],
   });
+
+  // Sync realm templates into the registry
+  realmRegistry.setTemplates(runnerId, templates);
 
   logger.info('Runner registered', { runnerId, name: body.name, endpoint: body.endpoint, reRegistered: !!existing });
   res.status(201).json({ runnerId, status: existing ? 're-registered' : 'registered' });
@@ -344,6 +380,7 @@ app.post('/runners/offline', (req, res) => {
   }
 
   runners.get(runnerId)!.status = 'offline';
+  realmRegistry.removeTemplates(runnerId);
   logger.info('Runner went offline', { runnerId });
   res.json({ status: 'offline' });
 });
@@ -433,6 +470,7 @@ app.get('/api/runners', (_req, res) => {
       endpoint: r.endpoint,
       version: r.version,
       capabilities: r.capabilities,
+      realmTemplates: r.realmTemplates,
       labels: r.labels,
       status: r.status,
       lastHeartbeat: r.lastHeartbeat,
@@ -452,12 +490,341 @@ app.get('/api/runners/:runnerId', (req, res) => {
   res.json(runner);
 });
 
+// ─── Session management ─────────────────────────────────────────
+
+const sessions = new Map<string, SessionDescriptor>();
+
+function validateApiKey(req: express.Request): boolean {
+  if (API_KEYS.length === 0) return true;
+  const apiKey = req.headers['x-api-key'] as string | undefined;
+  return !!apiKey && API_KEYS.includes(apiKey);
+}
+
+/**
+ * Create a new interaction session.
+ *
+ * Flow:
+ *   1. Validate request
+ *   2. RealmScheduler decides which realm/realm template to use
+ *   3. RealmProvisioner ensures the realm exists (spawn or attach)
+ *   4. Create SessionDescriptor with realm endpoints
+ *   5. Mark active and register
+ */
+app.post('/api/v1/sessions', async (req, res) => {
+  const body = req.body as CreateSessionRequest;
+
+  if (!body.type || !['computer-use', 'phone-use'].includes(body.type)) {
+    res.status(400).json({ error: 'Invalid or missing session type. Must be "computer-use" or "phone-use".' });
+    return;
+  }
+
+  try {
+    // Step 1: Schedule — decide realm allocation
+    const allocation = await realmScheduler.schedule(body);
+
+    // Step 2: Provision — ensure realm exists
+    const realm = await realmProvisioner.ensureRealm(allocation, body.ownerId);
+
+    // Step 3: Create session attached to realm
+    const sessionId = `session-${nanoid(12)}`;
+    const now = new Date().toISOString();
+
+    const descriptor: SessionDescriptor = {
+      id: sessionId,
+      type: body.type,
+      state: 'creating',
+      observationEndpoint: realm.endpoints.observation,
+      inputEndpoint: realm.endpoints.input,
+      capabilities: body.capabilities ?? (body.type === 'computer-use'
+        ? ['mouse', 'keyboard', 'scroll', 'clipboard']
+        : ['touch', 'keyboard', 'scroll']),
+      observationMethod: 'screenshot',
+      realmId: realm.id,
+      ...(body.ownerId !== undefined ? { ownerId: body.ownerId } : {}),
+      ...(body.participantIds !== undefined ? { participantIds: body.participantIds } : {}),
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        ...body.metadata,
+        runnerId: realm.runnerId,
+        allocationAction: allocation.action,
+      },
+    };
+
+    descriptor.state = 'active';
+    sessions.set(sessionId, descriptor);
+
+    logger.info('Session created', {
+      sessionId,
+      type: body.type,
+      realmId: realm.id,
+      runnerId: realm.runnerId,
+      allocationAction: allocation.action,
+    });
+
+    const response: CreateSessionResponse = { sessionId, descriptor };
+    res.status(201).json(response);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Failed to create session', { error: message });
+    res.status(503).json({ error: `Unable to create session: ${message}` });
+  }
+});
+
+/**
+ * Get session details.
+ */
+app.get('/api/v1/sessions/:sessionId', (req, res) => {
+  const session = sessions.get(req.params.sessionId);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  res.json(session);
+});
+
+/**
+ * List all sessions, optionally filtered by type or state.
+ */
+app.get('/api/v1/sessions', (req, res) => {
+  const { type, state } = req.query;
+  let result = Array.from(sessions.values());
+
+  if (type) {
+    result = result.filter((s) => s.type === type);
+  }
+  if (state) {
+    result = result.filter((s) => s.state === state);
+  }
+
+  res.json({ sessions: result, count: result.length });
+});
+
+/**
+ * Update session state (pause, resume, terminate).
+ */
+app.patch('/api/v1/sessions/:sessionId', (req, res) => {
+  const session = sessions.get(req.params.sessionId);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+
+  const body = req.body as { state?: string; metadata?: Record<string, unknown> };
+  const validTransitions: Record<string, string[]> = {
+    creating: ['active', 'failed', 'terminated'],
+    active: ['paused', 'completed', 'failed', 'terminated'],
+    paused: ['active', 'terminated'],
+    completed: [],
+    failed: ['terminated'],
+    terminated: [],
+  };
+
+  if (body.state) {
+    const allowed = validTransitions[session.state] || [];
+    if (!allowed.includes(body.state)) {
+      res.status(400).json({
+        error: `Invalid state transition from "${session.state}" to "${body.state}". Allowed: ${allowed.join(', ')}`,
+      });
+      return;
+    }
+    session.state = body.state as SessionDescriptor['state'];
+  }
+
+  if (body.metadata) {
+    session.metadata = { ...session.metadata, ...body.metadata };
+  }
+
+  session.updatedAt = new Date().toISOString();
+
+  logger.info('Session state updated', { sessionId: session.id, state: session.state });
+  res.json(session);
+});
+
+/**
+ * Delete/terminate a session.
+ */
+app.delete('/api/v1/sessions/:sessionId', (req, res) => {
+  const session = sessions.get(req.params.sessionId);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+
+  session.state = 'terminated';
+  session.updatedAt = new Date().toISOString();
+
+  logger.info('Session terminated', { sessionId: session.id });
+  res.json({ status: 'terminated', sessionId: session.id });
+});
+
+// ─── Realm management API ────────────────────────────────────────
+
+/**
+ * List all realms managed by Yggdrasil.
+ */
+app.get('/api/v1/realms', (_req, res) => {
+  const realms = realmRegistry.listRealms();
+  res.json({ realms, count: realms.length });
+});
+
+/**
+ * Get a realm by ID.
+ */
+app.get('/api/v1/realms/:realmId', (req, res) => {
+  const realm = realmRegistry.getRealm(req.params.realmId);
+  if (!realm) {
+    res.status(404).json({ error: 'Realm not found' });
+    return;
+  }
+  res.json(realm);
+});
+
+/**
+ * Update realm state and endpoints (called by runners when a realm becomes ready).
+ */
+app.patch('/api/v1/realms/:realmId', (req, res) => {
+  const realm = realmRegistry.getRealm(req.params.realmId);
+  if (!realm) {
+    res.status(404).json({ error: 'Realm not found' });
+    return;
+  }
+
+  const body = req.body as {
+    state?: Realm['state'];
+    endpoints?: Realm['endpoints'];
+  };
+
+  if (body.state) {
+    realmRegistry.updateRealmState(realm.id, body.state);
+  }
+
+  if (body.endpoints) {
+    realmProvisioner.updateRealmEndpoints(realm.id, body.state ?? realm.state, body.endpoints);
+  }
+
+  const updated = realmRegistry.getRealm(realm.id);
+  res.json(updated);
+});
+
+/**
+ * Destroy a realm.
+ */
+app.delete('/api/v1/realms/:realmId', async (req, res) => {
+  const realm = realmRegistry.getRealm(req.params.realmId);
+  if (!realm) {
+    res.status(404).json({ error: 'Realm not found' });
+    return;
+  }
+
+  await realmProvisioner.destroyRealm(realm.id);
+  res.json({ status: 'destroyed', realmId: realm.id });
+});
+
+// ─── Realm lifecycle routes (relayed by Ratatoskr) ─────────────────
+
+/**
+ * Register a realm that has just come online.
+ * Called by Ratatoskr on behalf of a Realm instance.
+ */
+app.post('/api/v1/realms/register', (req, res) => {
+  const body = req.body as {
+    realmId: string;
+    runnerId: string;
+    template: string;
+    version?: string;
+    capabilities?: string[];
+    endpoints?: { observation: string; input: string };
+    registrationToken?: string;
+    startedAt?: string;
+  };
+
+  if (!body.realmId || !body.runnerId || !body.template) {
+    res.status(400).json({ error: 'realmId, runnerId, and template are required' });
+    return;
+  }
+
+  const registration: RealmRegistration = {
+    realmId: body.realmId,
+    runnerId: body.runnerId,
+    template: body.template as RealmTemplateType,
+    version: body.version ?? '0.1.0',
+    capabilities: (body.capabilities ?? []) as SessionCapability[],
+    endpoints: body.endpoints ?? { observation: '', input: '' },
+    registrationToken: body.registrationToken,
+    startedAt: body.startedAt ?? new Date().toISOString(),
+  };
+
+  const realm = realmLifecycle.registerRealm(registration, body.template as RealmTemplateType);
+  res.status(201).json(realm);
+});
+
+/**
+ * Heartbeat from a realm instance (relayed by Ratatoskr).
+ */
+app.post('/api/v1/realms/heartbeat', (req, res) => {
+  const body = req.body as {
+    realmId: string;
+    uptime?: number;
+    healthy?: boolean;
+    memoryMb?: number;
+    cpuPercent?: number;
+    activeSessions?: number;
+  };
+
+  if (!body.realmId) {
+    res.status(400).json({ error: 'realmId is required' });
+    return;
+  }
+
+  const heartbeat: RealmHeartbeat = {
+    realmId: body.realmId,
+    uptime: body.uptime ?? 0,
+    healthy: body.healthy ?? true,
+    memoryMb: body.memoryMb,
+    cpuPercent: body.cpuPercent,
+    activeSessions: body.activeSessions ?? 0,
+  };
+
+  const realm = realmLifecycle.heartbeatRealm(heartbeat);
+  if (!realm) {
+    res.status(404).json({ error: 'Realm not found' });
+    return;
+  }
+
+  res.json({ status: 'ok', realmId: realm.id, state: realm.state });
+});
+
+/**
+ * Deregister a realm on shutdown (relayed by Ratatoskr).
+ */
+app.post('/api/v1/realms/deregister', (req, res) => {
+  const body = req.body as {
+    realmId: string;
+    reason?: 'shutdown' | 'error' | 'replaced';
+  };
+
+  if (!body.realmId) {
+    res.status(400).json({ error: 'realmId is required' });
+    return;
+  }
+
+  const deregistration: RealmDeregistration = {
+    realmId: body.realmId,
+    reason: body.reason ?? 'shutdown',
+  };
+
+  realmLifecycle.deregisterRealm(deregistration);
+  res.json({ status: 'deregistered', realmId: deregistration.realmId });
+});
+
 // ─── Lease-based offline detection ──────────────────────────────
 
 const LEASE_TTL_MS = parseInt(process.env['LEASE_TTL_MS'] || '60000', 10);
 const EXPECTED_RUNNER_VERSION = process.env['EXPECTED_RUNNER_VERSION'] || '';
 
 if (typeof process.env.VITEST === 'undefined') {
+  // Runner lease TTL check
   setInterval(() => {
     const now = Date.now();
     const stale: string[] = [];
@@ -480,6 +847,9 @@ if (typeof process.env.VITEST === 'undefined') {
       });
     }
   }, 10_000);
+
+  // Realm stale detection
+  realmLifecycle.startStaleDetection();
 }
 
 // ─── Start server ───────────────────────────────────────────────
@@ -498,5 +868,5 @@ if (typeof process.env.VITEST === 'undefined') {
   });
 }
 
-export { app, runners };
+export { app, runners, sessions, realmRegistry, realmScheduler, realmProvisioner, realmLifecycle };
 

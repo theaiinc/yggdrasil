@@ -95,6 +95,7 @@ export class Ratatoskr {
       this.state.runnerId,
       this.state.runnerName,
       this.config.capabilities,
+      this.config.realmTemplates,
       this.config.labels,
       this.config.metadata,
     );
@@ -298,6 +299,7 @@ export class Ratatoskr {
       yggdrasilUrl: config.yggdrasilUrl,
       apiKey: config.apiKey ?? '',
       capabilities: config.capabilities ?? [],
+      realmTemplates: config.realmTemplates ?? [],
       heartbeatInterval: config.heartbeatInterval ?? 30,
       leaseTtl: config.leaseTtl ?? 60,
       taskPollInterval: config.taskPollInterval ?? 10,

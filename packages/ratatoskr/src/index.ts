@@ -33,6 +33,24 @@ export type {
   RunnerTask,
   TaskHandler,
   TaskExecutorConfig,
+
+  // Session types
+  SessionType,
+  SessionState,
+  ObservationMethod,
+  InputCapability,
+  SessionDescriptor,
+  CreateSessionRequest,
+  CreateSessionResponse,
+  SessionObservation,
+  SessionInput,
+  SessionInputResult,
+  SessionHealth,
+  SessionManagerConfig,
+
+  // Realm types
+  RealmTemplateType,
+  RealmTemplate,
 } from './types/index.js';
 
 // Export enum

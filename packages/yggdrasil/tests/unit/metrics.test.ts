@@ -36,6 +36,7 @@ function registerRunner(opts: {
     endpoint: 'http://localhost:9999',
     version: opts.version || '0.1.0',
     capabilities: opts.capabilities || ['agent'],
+    realmTemplates: [],
     labels: {},
     lastHeartbeat: new Date(),
     status: 'online',

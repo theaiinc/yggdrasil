@@ -1,11 +1,31 @@
 /**
- * Realm API client — talks to @theaiinc/realm-api HTTP server.
+ * Streamlined Realm API client — sessions replace direct capture/action calls.
  *
- * Supports all Realm engines (ubuntu desktop, android vm, container, browser)
- * through the universal /api/v1/realms/:id/* interface.
+ * This client talks to @theaiinc/realm-api HTTP server but presents a
+ * session-based interface. Consumers interact through sessions:
+ *
+ *   const client = new RealmClient({ baseUrl, engine: 'ubuntu' });
+ *   const session = await client.createSession({ type: 'computer-use' });
+ *   const observation = await client.observe(session.sessionId);
+ *   const result = await client.input(session.sessionId, { type: 'mouse', params: { x: 100, y: 200 } });
+ *
+ * Consumers must NOT depend on transport details (WebRTC, screenshots, etc.).
  */
 
 import axios, { type AxiosInstance } from 'axios';
+import { nanoid } from 'nanoid';
+
+import type {
+  CreateSessionRequest,
+  CreateSessionResponse,
+  SessionDescriptor,
+  SessionObservation,
+  SessionInput,
+  SessionInputResult,
+  SessionType,
+  SessionState,
+  SessionCapability,
+} from '../types/index.js';
 
 export type RealmEngineType = 'ubuntu' | 'vm' | 'container' | 'browser';
 
@@ -17,11 +37,6 @@ export interface RealmActionResult {
   timestamp?: string;
 }
 
-export interface RealmScreenshot {
-  base64: string;
-  piiRedacted?: boolean | undefined;
-}
-
 export interface RealmClientConfig {
   baseUrl: string;
   apiKey?: string | undefined;
@@ -31,33 +46,176 @@ export interface RealmClientConfig {
   environment?: Record<string, string> | undefined;
 }
 
+interface InternalSession {
+  id: string;
+  type: string;
+  realmId: string;
+  state: string;
+  capabilities: SessionCapability[];
+  ownerId?: string | undefined;
+  participantIds?: string[] | undefined;
+  createdAt: Date;
+}
+
 export class RealmClient {
   private readonly http: AxiosInstance;
-  private realmId: string | undefined;
   private readonly config: RealmClientConfig;
-  private createdRealm = false;
+  private readonly realmUrl: string;
+  private readonly sessions = new Map<string, InternalSession>();
 
   constructor(config: RealmClientConfig) {
     this.config = config;
-    this.realmId = config.realmId;
+    this.realmUrl = config.baseUrl.replace(/\/$/, '');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (config.apiKey) headers['x-api-key'] = config.apiKey;
     this.http = axios.create({
-      baseURL: config.baseUrl.replace(/\/$/, ''),
+      baseURL: this.realmUrl,
       headers,
       timeout: 60_000,
     });
   }
 
-  getRealmId(): string | undefined {
-    return this.realmId;
+  /**
+   * Create an interaction session.
+   * This replaces the old ensureRealm() + capture() pattern.
+   */
+  async createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {
+    const realmId = this.config.realmId || (await this.ensureRealm());
+    const sessionId = `session-${nanoid(12)}`;
+    const now = new Date().toISOString();
+
+    const capabilities = request.capabilities ?? this.getCapabilitiesForType(request.type);
+
+    const descriptor: SessionDescriptor = {
+      id: sessionId,
+      type: request.type,
+      state: 'creating',
+      observationEndpoint: `${this.realmUrl}/api/v1/realms/${realmId}/capture`,
+      inputEndpoint: `${this.realmUrl}/api/v1/realms/${realmId}`,
+      capabilities,
+      observationMethod: 'screenshot',
+      realmId,
+      ...(request.ownerId !== undefined ? { ownerId: request.ownerId } : {}),
+      ...(request.participantIds !== undefined ? { participantIds: request.participantIds } : {}),
+      createdAt: now,
+      updatedAt: now,
+      ...(request.metadata !== undefined ? { metadata: request.metadata } : {}),
+    };
+
+    this.sessions.set(sessionId, {
+      id: sessionId,
+      type: request.type,
+      realmId,
+      state: 'creating',
+      capabilities,
+      ...(request.ownerId !== undefined ? { ownerId: request.ownerId } : {}),
+      ...(request.participantIds !== undefined ? { participantIds: request.participantIds } : {}),
+      createdAt: new Date(),
+    });
+
+    // Mark active after setup
+    descriptor.state = 'active';
+    this.sessions.get(sessionId)!.state = 'active';
+
+    return { sessionId, descriptor };
   }
 
-  /** Resolve or create a realm and ensure it is running. */
+  /**
+   * Get the current session descriptor.
+   */
+  async getSession(sessionId: string): Promise<SessionDescriptor> {
+    const internal = this.getSessionInternal(sessionId);
+    return {
+      id: internal.id,
+      type: internal.type as SessionType,
+      state: internal.state as SessionState,
+      observationEndpoint: `${this.realmUrl}/api/v1/realms/${internal.realmId}/capture`,
+      inputEndpoint: `${this.realmUrl}/api/v1/realms/${internal.realmId}`,
+      capabilities: internal.capabilities,
+      observationMethod: 'screenshot',
+      realmId: internal.realmId,
+      ...(internal.ownerId !== undefined ? { ownerId: internal.ownerId } : {}),
+      ...(internal.participantIds !== undefined ? { participantIds: internal.participantIds } : {}),
+      createdAt: internal.createdAt.toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Observe the current state of a session.
+   * Realm decides how observation is delivered.
+   */
+  async observe(sessionId: string): Promise<SessionObservation> {
+    const session = this.getSessionInternal(sessionId);
+    const timestamp = new Date().toISOString();
+
+    const { data } = await this.http.get<{ screenshot: string; piiRedacted?: boolean }>(
+      `/api/v1/realms/${session.realmId}/capture`,
+    );
+
+    return {
+      screenshot: data.screenshot,
+      ...(data.piiRedacted !== undefined ? { piiRedacted: data.piiRedacted } : {}),
+      timestamp,
+    };
+  }
+
+  /**
+   * Send an input action to a session.
+   */
+  async input(sessionId: string, input: SessionInput): Promise<SessionInputResult> {
+    const session = this.getSessionInternal(sessionId);
+
+    switch (input.type) {
+      case 'mouse':
+      case 'touch': {
+        const { data } = await this.http.post<RealmActionResult>(
+          `/api/v1/realms/${session.realmId}/click`,
+          { x: input.params.x, y: input.params.y },
+        );
+        return {
+          success: data.success,
+          ...(data.error !== undefined ? { error: data.error } : {}),
+        };
+      }
+      case 'keyboard': {
+        const { data } = await this.http.post<RealmActionResult>(
+          `/api/v1/realms/${session.realmId}/type`,
+          { text: input.params.text },
+        );
+        return {
+          success: data.success,
+          ...(data.error !== undefined ? { error: data.error } : {}),
+        };
+      }
+      default:
+        return { success: false, error: `Unsupported input type: ${input.type}` };
+    }
+  }
+
+  /**
+   * Terminate a session.
+   */
+  async terminateSession(sessionId: string, destroyRealm = false): Promise<void> {
+    const session = this.getSessionInternal(sessionId);
+    session.state = 'terminated';
+    if (destroyRealm && !this.config.realmId) {
+      try {
+        await this.http.delete(`/api/v1/realms/${session.realmId}`);
+      } catch {
+        // best-effort
+      }
+    }
+  }
+
+  /**
+   * Legacy alias for backward compatibility — delegates to createSession.
+   * @deprecated Use createSession({ type: "computer-use" }) instead.
+   */
   async ensureRealm(): Promise<string> {
-    if (this.realmId) {
-      await this.startIfNeeded(this.realmId);
-      return this.realmId;
+    if (this.config.realmId) {
+      await this.startIfNeeded(this.config.realmId);
+      return this.config.realmId;
     }
 
     const name = this.config.realmName || `ratatoskr-${this.config.engine}-${Date.now()}`;
@@ -66,10 +224,9 @@ export class RealmClient {
       engine: this.config.engine,
       environment: this.config.environment,
     });
-    this.realmId = data.id;
-    this.createdRealm = true;
-    await this.startIfNeeded(this.realmId);
-    return this.realmId;
+    const realmId = data.id;
+    await this.startIfNeeded(realmId);
+    return realmId;
   }
 
   private async startIfNeeded(realmId: string): Promise<void> {
@@ -80,58 +237,27 @@ export class RealmClient {
     await this.http.post(`/api/v1/realms/${realmId}/start`);
   }
 
-  async capture(realmId: string): Promise<RealmScreenshot> {
-    const { data } = await this.http.get<{ screenshot: string; piiRedacted?: boolean }>(
-      `/api/v1/realms/${realmId}/capture`,
-    );
-    const screenshot: RealmScreenshot = { base64: data.screenshot };
-    if (data.piiRedacted !== undefined) screenshot.piiRedacted = data.piiRedacted;
-    return screenshot;
-  }
-
-  async click(realmId: string, x: number, y: number): Promise<RealmActionResult> {
-    const { data } = await this.http.post<RealmActionResult>(
-      `/api/v1/realms/${realmId}/click`,
-      { x, y },
-    );
-    return data;
-  }
-
-  async type(realmId: string, text: string): Promise<RealmActionResult> {
-    const { data } = await this.http.post<RealmActionResult>(
-      `/api/v1/realms/${realmId}/type`,
-      { text },
-    );
-    return data;
-  }
-
-  async navigate(realmId: string, url: string): Promise<RealmActionResult> {
-    const { data } = await this.http.post<RealmActionResult>(
-      `/api/v1/realms/${realmId}/navigate`,
-      { url },
-    );
-    return data;
-  }
-
-  async exec(realmId: string, command: string): Promise<RealmActionResult> {
-    const { data } = await this.http.post<RealmActionResult>(
-      `/api/v1/realms/${realmId}/exec`,
-      { command },
-    );
-    return data;
-  }
-
-  /** Destroy the realm if this client created it. */
-  async cleanup(): Promise<void> {
-    if (!this.realmId || !this.createdRealm) return;
-    try {
-      await this.http.delete(`/api/v1/realms/${this.realmId}`);
-    } catch {
-      // best-effort cleanup
+  private getSessionInternal(sessionId: string): InternalSession {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Session not found: ${sessionId}`);
+    if (session.state === 'terminated' || session.state === 'completed') {
+      throw new Error(`Session is ${session.state}: ${sessionId}`);
     }
-    this.realmId = undefined;
-    this.createdRealm = false;
+    return session;
   }
+
+  private getCapabilitiesForType(type: string): SessionCapability[] {
+    switch (type) {
+      case 'computer-use':
+        return ['mouse', 'keyboard', 'scroll', 'clipboard'];
+      case 'phone-use':
+        return ['touch', 'keyboard', 'scroll'];
+      default:
+        return ['mouse', 'keyboard'];
+    }
+  }
+
+  // ─── All methods use the session-based API — no legacy compat ──
 }
 
 export function loadRealmUrl(): string {

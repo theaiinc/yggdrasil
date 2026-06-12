@@ -1,12 +1,24 @@
 {
   "name": "@theaiinc/yggdrasil",
-  "version": "0.2.3",
-  "description": "Distributed runner orchestration controller — registration, heartbeat, task dispatch, lease management, and Prometheus metrics for Ratatoskr agents",
+  "version": "0.3.0",
+  "description": "Distributed runner orchestration controller — registration, heartbeat, task dispatch, lease management, Realm lifecycle, and Prometheus metrics for Ratatoskr agents",
   "author": "The AI Inc",
   "license": "MIT",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theaiinc/yggdrasil.git",
+    "directory": "packages/yggdrasil"
+  },
+  "homepage": "https://github.com/theaiinc/yggdrasil/blob/main/packages/yggdrasil/README.md",
+  "bugs": {
+    "url": "https://github.com/theaiinc/yggdrasil/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p ./tsconfig.json",
     "dev": "nodemon --exec \"node --loader ts-node/esm src/orchestration-controller.ts\"",

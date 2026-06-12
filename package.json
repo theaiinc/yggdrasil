@@ -12,8 +12,10 @@
     "lint": "nx run-many -t lint",
     "build:yggdrasil": "nx build @theaiinc/yggdrasil",
     "build:ratatoskr": "nx build @theaiinc/yggdrasil-ratatoskr",
+    "build:runtime": "nx build @theaiinc/yggdrasil-runtime",
     "test:yggdrasil": "nx test @theaiinc/yggdrasil",
     "test:ratatoskr": "nx test @theaiinc/yggdrasil-ratatoskr",
+    "test:runtime": "nx test @theaiinc/yggdrasil-runtime",
     "docker:compose": "docker compose up -d",
     "docker:compose:build": "docker compose build"
   },

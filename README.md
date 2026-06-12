@@ -1,33 +1,29 @@
 # @theaiinc/yggdrasil — Distributed Runner Orchestration
 
+<p align="center">
+  <a href="https://github.com/theaiinc/yggdrasil"><img alt="GitHub Repo" src="https://img.shields.io/badge/github-theaiinc%2Fyggdrasil-181717?style=flat-square&logo=github"/></a>
+  <a href="https://www.npmjs.com/package/@theaiinc/yggdrasil"><img alt="npm (yggdrasil)" src="https://img.shields.io/npm/v/@theaiinc/yggdrasil?style=flat-square&logo=npm"/></a>
+  <a href="https://www.npmjs.com/package/@theaiinc/yggdrasil-ratatoskr"><img alt="npm (ratatoskr)" src="https://img.shields.io/npm/v/@theaiinc/yggdrasil-ratatoskr?style=flat-square&logo=npm"/></a>
+  <a href="https://github.com/theaiinc/yggdrasil/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/theaiinc/yggdrasil?style=flat-square"/></a>
+</p>
+
+<p align="center">
+  <img src="./packages/yggdrasil/yggdrasil.svg" alt="Yggdrasil" width="300" />
+</p>
+
 Yggdrasil is the orchestration controller that receives runner registrations and heartbeats from [Ratatoskr](https://github.com/theaiinc/yggdrasil-ratatoskr) daemons. Ratatoskr runs alongside each runner (any machine, anywhere) and keeps Yggdrasil informed of its availability.
 
 ## Architecture
 
-```
-┌────────────────────────────────────────────┐
-│         Orchestration Controller           │
-│         (Node.js / Express)                │
-│                                            │
-│  • POST /runners/register                 │
-│  • POST /runners/heartbeat                │
-│  • POST /runners/update                   │
-│  • POST /runners/offline                  │
-│  • GET  /api/runners                      │
-│  • GET  /health                           │
-│  • GET  /metrics                          │
-└────┬───────────────────────┬──────────────┘
-     │                       │
-     ▼                       ▼
-┌──────────┐        ┌──────────────────┐
-│ Ratatoskr│        │    Monitoring    │
-│ Daemon   │        │  (Prometheus +   │
-│ (per     │        │    Grafana)      │
-│  runner) │        │                  │
-└──────────┘        └──────────────────┘
+```mermaid
+graph TD
+    Y[Yggdrasil<br/>Orchestration Controller<br/>Node.js / Express] -->|POST /runners/register<br/>POST /runners/heartbeat<br/>POST /runners/update<br/>POST /runners/offline| R[Ratatoskr Daemon<br/>per runner]
+    Y -->|GET /health<br/>GET /metrics| M[Monitoring<br/>Prometheus + Grafana]
+    Y -->|GET /api/runners| A[Runner API]
 ```
 
 Ratatoskr runs alongside each runner and automatically:
+
 - Registers the runner with Yggdrasil on startup
 - Sends periodic heartbeats
 - Updates endpoint on IP changes
@@ -76,10 +72,11 @@ YGGDRASIL_URL=http://localhost:3000
 
 ## Packages
 
-| Package | npm | Description |
-|---------|-----|-------------|
-| `@theaiinc/yggdrasil` | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil) | Orchestration controller |
-| `@theaiinc/yggdrasil-ratatoskr` | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil-ratatoskr) | Runner discovery daemon |
+| Package                         | npm                                                                | Description                      |
+| ------------------------------- | ------------------------------------------------------------------ | -------------------------------- |
+| `@theaiinc/yggdrasil`           | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil)           | Orchestration controller         |
+| `@theaiinc/yggdrasil-ratatoskr` | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil-ratatoskr) | Runner discovery daemon          |
+| `@theaiinc/yggdrasil-runtime`   | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil-runtime)   | ComputerUseRuntime for Cognition |
 
 ## Development
 

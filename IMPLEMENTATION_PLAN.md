@@ -11,25 +11,9 @@ Yggdrasil is an Nx monorepo with two packages:
 
 ## Architecture
 
-```
-┌────────────────────────────────┐
-│           Yggdrasil            │  ← server, runs in one place
-│  POST /runners/register        │
-│  POST /runners/heartbeat       │
-│  POST /runners/update          │
-│  POST /runners/offline         │
-│  GET  /api/runners             │
-│  GET  /health                  │
-│  GET  /metrics                 │
-└────────┬───────────────────────┘
-         │  HTTPS
-    ┌────┴──────────────┐
-    │    Ratatoskr      │  ← daemon, runs on each runner machine
-    │  (registration,   │
-    │   heartbeat,      │
-    │   health,         │
-    │   endpoint)       │
-    └───────────────────┘
+```mermaid
+graph TD
+    Y[Yggdrasil<br/>POST /runners/register<br/>POST /runners/heartbeat<br/>POST /runners/update<br/>POST /runners/offline<br/>GET /api/runners<br/>GET /health<br/>GET /metrics] -->|HTTPS| R[Ratatoskr<br/>registration, heartbeat<br/>health, endpoint]
 ```
 
 ## Key Decisions
@@ -165,8 +149,9 @@ services:
 
 | Package | npm | Version |
 |---------|-----|---------|
-| `@theaiinc/yggdrasil` | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil) | 0.2.0 |
-| `@theaiinc/yggdrasil-ratatoskr` | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil-ratatoskr) | 0.1.1 |
+| `@theaiinc/yggdrasil` | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil) | 0.3.0 |
+| `@theaiinc/yggdrasil-ratatoskr` | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil-ratatoskr) | 0.3.0 |
+| `@theaiinc/yggdrasil-runtime` | [npm](https://www.npmjs.com/package/@theaiinc/yggdrasil-runtime) | 0.1.1 |
 
 ## Future Work
 

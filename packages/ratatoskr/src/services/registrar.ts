@@ -1,4 +1,4 @@
-import type { RunnerRegistration, EndpointUpdatePayload } from '../types/index.js';
+import type { RunnerRegistration, EndpointUpdatePayload, RealmTemplate } from '../types/index.js';
 import type { Transport } from '../transports/transport.js';
 import type { EndpointDetector } from './endpoint-detector.js';
 import type { RetryManager } from './retry-manager.js';
@@ -21,6 +21,7 @@ export class Registrar {
   private readonly runnerName: string;
   private readonly version: string;
   private readonly capabilities: string[];
+  private readonly realmTemplates: RealmTemplate[];
   private readonly labels: Record<string, string>;
   private readonly metadata: Record<string, unknown>;
   private registered: boolean = false;
@@ -34,6 +35,7 @@ export class Registrar {
     runnerId: string,
     runnerName: string,
     capabilities: string[],
+    realmTemplates?: RealmTemplate[],
     labels?: Record<string, string>,
     metadata?: Record<string, unknown>,
   ) {
@@ -46,6 +48,7 @@ export class Registrar {
     this.runnerName = runnerName;
     this.version = '0.1.0';
     this.capabilities = capabilities;
+    this.realmTemplates = realmTemplates ?? [];
     this.labels = labels ?? {};
     this.metadata = metadata ?? {};
   }
@@ -65,6 +68,7 @@ export class Registrar {
       endpoint,
       version: this.version,
       capabilities: this.capabilities,
+      ...(this.realmTemplates.length > 0 ? { realmTemplates: this.realmTemplates } : {}),
       resources,
       ...(Object.keys(this.labels).length > 0 ? { labels: this.labels } : {}),
       ...(Object.keys(this.metadata).length > 0 ? { metadata: this.metadata } : {}),

@@ -1,5 +1,15 @@
 # @theaiinc/yggdrasil-ratatoskr
 
+<p align="center">
+  <a href="https://github.com/theaiinc/yggdrasil"><img alt="GitHub Repo" src="https://img.shields.io/badge/github-theaiinc%2Fyggdrasil-181717?style=flat-square&logo=github"/></a>
+  <a href="https://www.npmjs.com/package/@theaiinc/yggdrasil-ratatoskr"><img alt="npm" src="https://img.shields.io/npm/v/@theaiinc/yggdrasil-ratatoskr?style=flat-square&logo=npm"/></a>
+  <a href="https://github.com/theaiinc/yggdrasil/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/theaiinc/yggdrasil?style=flat-square"/></a>
+</p>
+
+<p align="center">
+  <img src="./ratatoskr.svg" alt="Ratatoskr" width="300" />
+</p>
+
 Lightweight runner daemon for Yggdrasil — registers, heartbeats, and executes tasks with configurable capability presets.
 
 Ratatoskr runs alongside any agent (Docker container, laptop, server) and continuously informs [Yggdrasil](https://www.npmjs.com/package/@theaiinc/yggdrasil) about runner availability, capabilities, health, and task execution. It can execute tasks itself using its built-in LLM, shell, web, code, and file handlers.

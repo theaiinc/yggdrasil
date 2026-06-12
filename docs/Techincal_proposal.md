@@ -11,31 +11,9 @@ Key design decisions:
 
 ## 2. Architecture
 
-```
-┌─────────────────────────────────┐
-│        Yggdrasil Server         │
-│  (Node.js / Express)            │
-│                                 │
-│  POST /runners/register         │
-│  POST /runners/heartbeat        │
-│  POST /runners/update           │
-│  POST /runners/offline          │
-│  GET  /api/runners              │
-│  GET  /health                   │
-│  GET  /metrics                  │
-└──────────┬──────────────────────┘
-           │
-    ┌──────┴──────┐
-    │  Internet   │
-    └──────┬──────┘
-           │
-    ┌──────┴───────────────┐
-    │  Ratatoskr Daemon    │  ← runs on each runner machine
-    │  (registration,      │
-    │   heartbeat,         │
-    │   health,            │
-    │   endpoint detect)   │
-    └──────────────────────┘
+```mermaid
+graph TD
+    Y[Yggdrasil Server<br/>Node.js / Express<br/>POST /runners/register<br/>POST /runners/heartbeat<br/>POST /runners/update<br/>POST /runners/offline<br/>GET /api/runners<br/>GET /health<br/>GET /metrics] -->|Internet| R[Ratatoskr Daemon<br/>registration, heartbeat<br/>health, endpoint detect<br/>runs on each runner machine]
 ```
 
 ### Key properties

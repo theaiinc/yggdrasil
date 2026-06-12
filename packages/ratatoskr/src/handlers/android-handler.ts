@@ -1,5 +1,8 @@
 /**
- * Android handler — mobile automation via Realm VM engine (Android emulator + ADB).
+ * Android handler — session-based mobile automation via Realm VM engine (Android emulator + ADB).
+ *
+ * Creates a "phone-use" session: observe → decide → act → repeat.
+ * Streaming is an internal Realm implementation detail.
  *
  * Requires @theaiinc/realm-api with VMEngine registered and an Android SDK/AVD
  * configured on the host running the Realm server.

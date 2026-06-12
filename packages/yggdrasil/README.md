@@ -1,5 +1,15 @@
 # @theaiinc/yggdrasil
 
+<p align="center">
+  <a href="https://github.com/theaiinc/yggdrasil"><img alt="GitHub Repo" src="https://img.shields.io/badge/github-theaiinc%2Fyggdrasil-181717?style=flat-square&logo=github"/></a>
+  <a href="https://www.npmjs.com/package/@theaiinc/yggdrasil"><img alt="npm" src="https://img.shields.io/npm/v/@theaiinc/yggdrasil?style=flat-square&logo=npm"/></a>
+  <a href="https://github.com/theaiinc/yggdrasil/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/theaiinc/yggdrasil?style=flat-square"/></a>
+</p>
+
+<p align="center">
+  <img src="./yggdrasil.svg" alt="Yggdrasil" width="300" />
+</p>
+
 Distributed runner orchestration controller — receives runner registrations and heartbeats, dispatches tasks, and manages a dynamic pool of Ratatoskr agents.
 
 Yggdrasil is the control plane for a fleet of runners. Each runner runs a [Ratatoskr](https://www.npmjs.com/package/@theaiinc/yggdrasil-ratatoskr) daemon that registers, heartbeats, and executes tasks. Yggdrasil tracks which runners are alive, assigns tasks to them, and handles lease expiry, updates, and health monitoring.
@@ -38,19 +48,24 @@ npx @theaiinc/yggdrasil
 
 ## Architecture
 
-```
-┌──────────────┐     HTTP (heartbeat, register, tasks)    ┌──────────────┐
-│  Ratatoskr   │◄─────────────────────────────────────────►│   Yggdrasil  │
-│  (runner)    │    POST /runners/register                 │  (controller)│
-│              │    POST /runners/heartbeat                │              │
-│              │    POST /runners/task/:id/patch           │              │
-└──────────────┘                                          └──────────────┘
-       │                                                         │
-       │  Runs agent tasks                                       │  API surface
-       │  (sub-agent LLM loop,                                   │  consumed by
-       │   shell, file, web tools)                               │  orchestration layer
-       ▼                                                         ▼
-   Docker / host                                            api-gateway
+```mermaid
+graph LR
+    subgraph Runners
+        RT1[Ratatoskr<br/>runner-1]
+        RT2[Ratatoskr<br/>runner-2]
+        RTN[Ratatoskr<br/>runner-N]
+    end
+    subgraph ControlPlane
+        Y[Yggdrasil<br/>Controller<br/>POST /runners/register<br/>POST /runners/heartbeat<br/>POST /runners/task/:id/patch]
+    end
+    subgraph Consumers
+        OG[api-gateway<br/>orchestration layer]
+    end
+    RT1 <-->|HTTP| Y
+    RT2 <-->|HTTP| Y
+    RTN <-->|HTTP| Y
+    OG -->|GET /api/runners<br/>GET /runners/:id/tasks| Y
+    Y -->|POST /runners/:id/tasks<br/>PATCH /runners/:id/tasks/:tid| OG
 ```
 
 ## API Endpoints

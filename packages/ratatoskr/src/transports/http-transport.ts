@@ -8,6 +8,9 @@ import type {
   EndpointUpdatePayload,
   DeregisterPayload,
   RunnerTask,
+  RealmRegistration,
+  RealmHeartbeat,
+  RealmDeregistration,
 } from '../types/index.js';
 
 /**
@@ -66,6 +69,30 @@ export class HttpTransport implements Transport {
    */
   async deregister(payload: DeregisterPayload): Promise<void> {
     await this.client.post('/runners/offline', payload);
+  }
+
+  // ── Realm lifecycle relays ──────────────────────────────────────────
+
+  /**
+   * Relay a realm registration to Yggdrasil.
+   * Ratatoskr is the transport — it does not inspect or store realm state.
+   */
+  async registerRealm(payload: RealmRegistration): Promise<void> {
+    await this.client.post('/api/v1/realms/register', payload);
+  }
+
+  /**
+   * Relay a realm heartbeat to Yggdrasil.
+   */
+  async heartbeatRealm(payload: RealmHeartbeat): Promise<void> {
+    await this.client.post('/api/v1/realms/heartbeat', payload);
+  }
+
+  /**
+   * Relay a realm deregistration to Yggdrasil.
+   */
+  async deregisterRealm(payload: RealmDeregistration): Promise<void> {
+    await this.client.post('/api/v1/realms/deregister', payload);
   }
 
   /**

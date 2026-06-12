@@ -1,15 +1,25 @@
 /**
- * Shared automation loop for Realm-backed computer use (desktop + Android).
+ * Shared automation loop for session-based Computer Use (desktop + Android).
  *
- * Flow: screenshot → decide action → execute via Realm API → repeat.
+ * Flow: create session → observe → decide action → send input → observe → repeat.
+ *
+ * Cognition interacts through sessions:
+ *   startSession({ type: "computer-use" })
+ *   observe(sessionId)  →  SessionObservation
+ *   input(sessionId, { type: "mouse", params: { x, y } })
+ *
+ * NOT through streaming:
+ *   requestScreenStream()  ✗
+ *   startStream()          ✗
+ *   stopStream()           ✗
  */
 
 import type { TaskHandler, RunnerTask } from '../types/index.js';
+import type { SessionObservation, SessionInput } from '../types/index.js';
 import {
   RealmClient,
   type RealmClientConfig,
   type RealmEngineType,
-  type RealmScreenshot,
   loadRealmUrl,
   loadRealmApiKey,
 } from './realm-client.js';
@@ -31,12 +41,12 @@ export interface AutomationAction {
 
 async function decideAction(
   goal: string,
-  screenshot: RealmScreenshot,
+  observation: SessionObservation,
   previousActions: string[],
 ): Promise<AutomationAction> {
   // Placeholder — real implementation will use a vision-capable LLM.
   void goal;
-  void screenshot;
+  void observation;
   void previousActions;
   return { action: 'wait', params: { ms: 500 } };
 }
@@ -49,22 +59,41 @@ function isGoalComplete(result: { data?: unknown }): boolean {
   return false;
 }
 
-async function executeAction(
+async function executeSessionAction(
   client: RealmClient,
-  realmId: string,
+  sessionId: string,
   action: string,
   params: Record<string, unknown>,
 ): Promise<{ success: boolean; error?: string; data?: unknown }> {
   switch (action) {
     case 'click':
-    case 'tap':
-      return client.click(realmId, params.x as number, params.y as number);
-    case 'type':
-      return client.type(realmId, params.text as string);
+    case 'tap': {
+      const input: SessionInput = {
+        type: action === 'click' ? 'mouse' : 'touch',
+        params: { x: params.x, y: params.y },
+      };
+      const result = await client.input(sessionId, input);
+      return {
+        success: result.success,
+        ...(result.error !== undefined ? { error: result.error } : {}),
+      };
+    }
+    case 'type': {
+      const input: SessionInput = {
+        type: 'keyboard',
+        params: { text: params.text as string },
+      };
+      const result = await client.input(sessionId, input);
+      return {
+        success: result.success,
+        ...(result.error !== undefined ? { error: result.error } : {}),
+      };
+    }
     case 'navigate':
-      return client.navigate(realmId, params.url as string);
+      // Navigate is a Realm input action.
+      return { success: false, error: 'Navigate not yet supported in session mode' };
     case 'exec':
-      return client.exec(realmId, params.command as string);
+      return { success: false, error: 'Exec not yet supported in session mode' };
     case 'wait':
       await new Promise((r) => setTimeout(r, (params.ms as number) ?? 500));
       return { success: true };
@@ -93,16 +122,27 @@ export function createAutomationHandler(config: AutomationConfig): TaskHandler {
 
     const previousActions: string[] = [];
     let iteration = 0;
+    let sessionId: string | undefined;
 
     try {
-      const realmId = await client.ensureRealm();
+      // Create a session for this automation task.
+      // Cognition requests: startSession({ type: "computer-use" })
+      const sessionType = config.engine === 'vm' ? 'phone-use' : 'computer-use';
+      const session = await client.createSession({
+        type: sessionType,
+        ...(realmIdOverride !== undefined ? { realmId: realmIdOverride } : {}),
+        ...({ metadata: { goal, engine: config.engine } }),
+      });
+      sessionId = session.sessionId;
 
       while (iteration < config.maxIterations) {
         iteration++;
 
-        const screenshot = await client.capture(realmId);
-        const decision = await decideAction(goal, screenshot, previousActions);
-        const result = await executeAction(client, realmId, decision.action, decision.params);
+        // Observe the current state via the session.
+        // Realm decides how observation is delivered (screenshot, a11y tree, etc.).
+        const observation = await client.observe(sessionId);
+        const decision = await decideAction(goal, observation, previousActions);
+        const result = await executeSessionAction(client, sessionId, decision.action, decision.params);
 
         if (!result.success) {
           return {
@@ -110,7 +150,8 @@ export function createAutomationHandler(config: AutomationConfig): TaskHandler {
             metadata: {
               error: result.error || `Action failed: ${decision.action}`,
               goal,
-              realmId,
+              realmId: session.descriptor?.realmId,
+              sessionId,
               engine: config.engine,
               iterations: iteration,
               lastAction: decision.action,
@@ -125,7 +166,8 @@ export function createAutomationHandler(config: AutomationConfig): TaskHandler {
             status: 'completed',
             metadata: {
               goal,
-              realmId,
+              realmId: session.descriptor?.realmId,
+              sessionId,
               engine: config.engine,
               iterations: iteration,
               actions: previousActions,
@@ -143,7 +185,8 @@ export function createAutomationHandler(config: AutomationConfig): TaskHandler {
         status: 'completed',
         metadata: {
           goal,
-          realmId: client.getRealmId(),
+          realmId: (await client.getSession(sessionId))?.realmId,
+          sessionId,
           engine: config.engine,
           iterations: iteration,
           actions: previousActions,
@@ -162,8 +205,10 @@ export function createAutomationHandler(config: AutomationConfig): TaskHandler {
         },
       };
     } finally {
-      const destroy = task.metadata?.destroyRealm === true || process.env.REALM_DESTROY_ON_COMPLETE === 'true';
-      if (destroy) await client.cleanup();
+      if (sessionId) {
+        const destroy = task.metadata?.destroyRealm === true || process.env.REALM_DESTROY_ON_COMPLETE === 'true';
+        await client.terminateSession(sessionId, destroy);
+      }
     }
   };
 }
