@@ -110,6 +110,15 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ github.event.release.tag_name }}
 
+      - name: Push Docker Hub README for Yggdrasil
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          repository: theaiinc/yggdrasil
+          short-description: Distributed runner orchestration controller for agent management
+          readme-filepath: packages/yggdrasil/DOCKER_HUB.md
+
       - name: Build and push Ratatoskr
         uses: docker/build-push-action@v6
         with:
@@ -123,3 +132,12 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ github.event.release.tag_name }}
+
+      - name: Push Docker Hub README for Ratatoskr
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          repository: theaiinc/ratatoskr
+          short-description: Lightweight discovery and heartbeat daemon for Yggdrasil
+          readme-filepath: packages/ratatoskr/DOCKER_HUB.md

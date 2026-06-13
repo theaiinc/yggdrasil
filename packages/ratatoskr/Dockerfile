@@ -38,6 +38,13 @@ RUN apk add --no-cache curl
 # Set working directory
 WORKDIR /app
 
+LABEL org.opencontainers.image.title="Ratatoskr"
+LABEL org.opencontainers.image.description="Lightweight discovery and heartbeat daemon for Yggdrasil — registration, heartbeat, task execution, Realm lifecycle relay, and LLM/agent capability presets"
+LABEL org.opencontainers.image.url="https://github.com/theaiinc/yggdrasil"
+LABEL org.opencontainers.image.source="https://github.com/theaiinc/yggdrasil"
+LABEL org.opencontainers.image.vendor="The AI Inc"
+LABEL org.opencontainers.image.licenses="MIT"
+
 # Create a "consumer" package.json and install the freshly built package
 # This mirrors exactly what `npm install @theaiinc/yggdrasil-ratatoskr` would do
 # at runtime, so the image is self-contained and the update path is identical.

@@ -1,4 +1,4 @@
-# Orchestration controller for Yggdrasil agent management system
+# Orchestration controller for Yggdrasil — distributed runner orchestration
 FROM node:18-alpine AS builder
 
 WORKDIR /app
@@ -24,6 +24,13 @@ RUN apk add --no-cache curl
 
 # Set working directory
 WORKDIR /app
+
+LABEL org.opencontainers.image.title="Yggdrasil"
+LABEL org.opencontainers.image.description="Distributed runner orchestration controller — registration, heartbeat, task dispatch, lease management, Realm lifecycle, and Prometheus metrics for Ratatoskr agents"
+LABEL org.opencontainers.image.url="https://github.com/theaiinc/yggdrasil"
+LABEL org.opencontainers.image.source="https://github.com/theaiinc/yggdrasil"
+LABEL org.opencontainers.image.vendor="The AI Inc"
+LABEL org.opencontainers.image.licenses="MIT"
 
 # Copy only production dependencies
 COPY package*.json ./
