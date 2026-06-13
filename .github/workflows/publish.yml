@@ -141,3 +141,26 @@ jobs:
           repository: theaiinc/ratatoskr
           short-description: Lightweight discovery and heartbeat daemon for Yggdrasil
           readme-filepath: packages/ratatoskr/DOCKER_HUB.md
+
+      - name: Build and push Grafana
+        uses: docker/build-push-action@v6
+        with:
+          context: packages/yggdrasil-grafana-plugins
+          push: true
+          tags: |
+            ghcr.io/theaiinc/yggdrasil-grafana:${{ github.event.release.tag_name }}
+            ghcr.io/theaiinc/yggdrasil-grafana:latest
+            theaiinc/yggdrasil-grafana:${{ github.event.release.tag_name }}
+            theaiinc/yggdrasil-grafana:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ github.event.release.tag_name }}
+
+      - name: Push Docker Hub README for Grafana
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          repository: theaiinc/yggdrasil-grafana
+          short-description: Grafana with pre-installed Yggdrasil Admin Panel
+          readme-filepath: packages/yggdrasil-grafana-plugins/DOCKER_HUB.md

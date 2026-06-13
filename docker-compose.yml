@@ -72,7 +72,9 @@ services:
       - yggdrasil-network
 
   grafana:
-    image: grafana/grafana:latest
+    build:
+      context: packages/yggdrasil-grafana-plugins
+      dockerfile: Dockerfile
     ports:
       - '3001:3000'
     environment:
@@ -80,11 +82,13 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ALLOW_EMBEDDING=true           # Allow iframing Yggdrasil admin panel
       - GF_SECURITY_ALLOW_EMBEDDING=true         # Legacy alias
-      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=theaiinc-yggdrasiladmin-panel
+    env_file:
+      - .env
     volumes:
       - grafana_data:/var/lib/grafana
       - ./packages/yggdrasil/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./packages/yggdrasil-grafana-plugins/dist:/var/lib/grafana/plugins/theaiinc-yggdrasiladmin-panel
+      # Note: The Yggdrasil Admin Panel is baked into the image, no volume mount needed.
+      # Rebuild the image to pick up plugin changes: docker compose build grafana
     depends_on:
       - prometheus
     networks:
