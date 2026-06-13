@@ -39,6 +39,12 @@ services:
       - API_KEY=${YGGDRASIL_API_KEY:-dev-api-key-123}
       - RUNNER_NAME=ratatoskr-docker
       - CAPABILITIES=http,health,docker,registration
+      # Self-update (Approach A): the container runs from the npm-installed
+      # package at node_modules/@theaiinc/yggdrasil-ratatoskr/. Trigger via:
+      #   POST /api/admin/runners/request-update
+      #   { "runnerIds": ["ALL"], "version": "x.y.z",
+      #     "command": "cd /app && npm install @theaiinc/yggdrasil-ratatoskr@x.y.z" }
+      # Ratatoskr runs the command, then exits — Docker restarts with the new version.
     env_file:
       - .env
     depends_on:

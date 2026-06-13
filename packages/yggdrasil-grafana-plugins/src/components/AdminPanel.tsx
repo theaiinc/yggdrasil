@@ -495,6 +495,39 @@ export const AdminPanel: React.FC<Props> = ({ options, height }) => {
           </div>
         </div>
       )}
+
+      {/* Purge Offline Runners - Always visible in control tab */}
+      {tab === 'control' && (
+        <div style={{ ...style.card, ...style.col }}>
+          <div style={{ ...style.row, justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Danger Zone</div>
+            <button
+              style={style.btn('#b71c1c')}
+              onClick={async () => {
+                if (!window.confirm('Purge all offline runner records? This cannot be undone.')) return;
+                try {
+                  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/admin/runners`, {
+                    method: 'DELETE',
+                    headers,
+                    body: JSON.stringify({ runnerIds: ['ALL'] }),
+                  });
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                  const d = (await res.json()) as { removedRunners: string[]; message: string };
+                  showStatus('ok', d.message);
+                  loadAll();
+                } catch {
+                  showStatus('err', 'Purge failed');
+                }
+              }}
+            >
+              Purge Offline Runners
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: '#888' }}>
+            Runners are kept for 1 week after going offline. Use this to clean up during development.
+          </div>
+        </div>
+      )}
     </div>
   );
 };

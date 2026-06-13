@@ -475,10 +475,15 @@ app.post('/runners/offline', (req, res) => {
     return;
   }
 
-  runners.get(runnerId)!.status = 'offline';
+  const runner = runners.get(runnerId)!;
+  logger.info('Runner deregistered — removing record', {
+    runnerId,
+    name: runner.name,
+    version: runner.version,
+  });
   realmRegistry.removeTemplates(runnerId);
-  logger.info('Runner went offline', { runnerId });
-  res.json({ status: 'offline' });
+  runners.delete(runnerId);
+  res.json({ status: 'deregistered' });
 });
 
 // ─── Task management ────────────────────────────────────────────
@@ -1089,6 +1094,67 @@ app.get('/api/admin/runners', adminKeyAuth, (_req, res) => {
 });
 
 /**
+ * Purge offline runner records (by ID or ALL).
+ *
+ * DELETE /api/admin/runners
+ * Body: { runnerIds?: string[] }
+ *
+ * - runnerIds: list of runner IDs to purge, or ["ALL"] to purge every offline runner.
+ * - If runnerIds is omitted or [], no runners are purged.
+ */
+app.delete('/api/admin/runners', adminKeyAuth, (req, res) => {
+  const body = req.body as { runnerIds?: string[] };
+
+  const rawIds = body.runnerIds ?? [];
+  const purgeAll = rawIds.length === 1 && rawIds[0] === 'ALL';
+
+  const removed: string[] = [];
+  const notFound: string[] = [];
+
+  if (purgeAll) {
+    for (const [runnerId, runner] of runners.entries()) {
+      if (runner.status !== 'offline') continue;
+      realmRegistry.removeTemplates(runnerId);
+      runners.delete(runnerId);
+      removed.push(runnerId);
+    }
+  } else {
+    for (const runnerId of rawIds) {
+      const runner = runners.get(runnerId);
+      if (!runner) {
+        notFound.push(runnerId);
+        continue;
+      }
+      if (runner.status !== 'offline') {
+        // Only purge offline runners — live runners must deregister cleanly
+        notFound.push(runnerId);
+        continue;
+      }
+      realmRegistry.removeTemplates(runnerId);
+      runners.delete(runnerId);
+      removed.push(runnerId);
+    }
+  }
+
+  logger.info('Purged offline runner records', {
+    purgeAll,
+    removedCount: removed.length,
+    removedRunners: removed,
+    notFoundCount: notFound.length,
+    notFoundRunners: notFound,
+  });
+
+  res.json({
+    status: 'purged',
+    removedRunners: removed,
+    notFoundRunners: notFound,
+    message: purgeAll
+      ? `Purged ${removed.length} offline runner(s).`
+      : `Purged ${removed.length} of ${rawIds.length} requested runner(s).`,
+  });
+});
+
+/**
  * Get the update log tail for a specific runner.
  * The log is reported by the runner via heartbeat, so it's always fresh.
  *
@@ -1341,8 +1407,31 @@ if (typeof process.env.VITEST === 'undefined') {
       logger.warn('Runner marked offline due to heartbeat timeout', {
         runnerId,
         name: runner.name,
+        version: runner.version,
         missedBy: `${Math.round((now - runner.lastHeartbeat.getTime()) / 1000)}s`,
       });
+    }
+
+    // Weekly cleanup: purge runners that have been offline for over 7 days
+    const STALE_OFFLINE_MS = 7 * 24 * 60 * 60 * 1000;
+    const purge: string[] = [];
+    for (const [runnerId, runner] of runners.entries()) {
+      if (runner.status !== 'offline') continue;
+      const elapsed = now - runner.lastHeartbeat.getTime();
+      if (elapsed > STALE_OFFLINE_MS) {
+        purge.push(runnerId);
+      }
+    }
+    for (const runnerId of purge) {
+      const runner = runners.get(runnerId)!;
+      logger.info('Purging runner record — offline for over 1 week', {
+        runnerId,
+        name: runner.name,
+        version: runner.version,
+        offlineSince: runner.lastHeartbeat.toISOString(),
+      });
+      realmRegistry.removeTemplates(runnerId);
+      runners.delete(runnerId);
     }
   }, 10_000);
 
