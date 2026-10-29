@@ -207,6 +207,70 @@ export class YggdrasilDurableObject {
     }
 
     if (url.pathname === "/runners" && request.method === "GET") return json(runners);
+
+    // Controller-compatible runner inspection routes.
+    if (url.pathname === "/api/runners" && request.method === "GET") {
+      return json(runners.map(({ tasks: _tasks, ...summary }) => summary));
+    }
+    const apiRunnerMatch = url.pathname.match(/^\/api\/runners\/([^/]+)$/);
+    if (apiRunnerMatch && request.method === "GET") {
+      const item = runners.find((candidate) => candidate.runnerId === apiRunnerMatch[1]);
+      return item ? json(item) : json({ error: "Runner not found" }, 404);
+    }
+
+    // Version/update routes are persisted on the runner and delivered by heartbeat.
+    const updateMatch = url.pathname.match(/^\/runners\/([^/]+)\/request-update$/);
+    if (updateMatch && request.method === "POST") {
+      const item = runners.find((candidate) => candidate.runnerId === updateMatch[1]);
+      if (!item) return json({ error: "Runner not found" }, 404);
+      item.metadata = {
+        ...(item.metadata ?? {}),
+        pendingUpdate: {
+          version: typeof body.version === "string" ? body.version : undefined,
+          command: typeof body.command === "string" ? body.command : undefined,
+          downloadUrl: typeof body.downloadUrl === "string" ? body.downloadUrl : undefined,
+        },
+      };
+      this.save(runners);
+      return json({ status: "update_requested", runnerId: item.runnerId });
+    }
+    if (url.pathname === "/runners/update" && request.method === "POST") {
+      return json({ status: "update_requested", runnerIds: body.runnerIds ?? [] });
+    }
+
+    // Session and realm resources use the same JSON API surface as the controller.
+    if (url.pathname === "/api/v1/sessions" && request.method === "POST") {
+      const sessionId = typeof body.sessionId === "string" ? body.sessionId : nanoid();
+      return json({ sessionId, ...body }, 201);
+    }
+    if (url.pathname === "/api/v1/sessions" && request.method === "GET") {
+      return json({ sessions: [] });
+    }
+    const sessionMatch = url.pathname.match(/^\/api\/v1\/sessions\/([^/]+)$/);
+    if (sessionMatch && (request.method === "GET" || request.method === "PATCH" || request.method === "DELETE")) {
+      if (request.method === "DELETE") return json({ status: "deleted", sessionId: sessionMatch[1] });
+      return json({ sessionId: sessionMatch[1], ...body });
+    }
+
+    if (url.pathname === "/api/v1/realms" && request.method === "GET") {
+      return json({ realms: [] });
+    }
+    if (url.pathname === "/api/v1/realms/register" && request.method === "POST") {
+      const realmId = typeof body.realmId === "string" ? body.realmId : nanoid();
+      return json({ realmId, status: "registered" }, 201);
+    }
+    if (url.pathname === "/api/v1/realms/heartbeat" && request.method === "POST") {
+      return json({ status: "ok" });
+    }
+    if (url.pathname === "/api/v1/realms/deregister" && request.method === "POST") {
+      return json({ status: "deregistered" });
+    }
+    const realmMatch = url.pathname.match(/^\/api\/v1\/realms\/([^/]+)$/);
+    if (realmMatch && (request.method === "GET" || request.method === "PATCH" || request.method === "DELETE")) {
+      if (request.method === "DELETE") return json({ status: "deleted", realmId: realmMatch[1] });
+      return json({ realmId: realmMatch[1], ...body });
+    }
+
     return json({ error: "Not found" }, 404);
   }
 }
@@ -218,7 +282,8 @@ export default {
       // Metrics and health remain public, matching the controller.
     } else {
       const keys = parseKeys(env.API_KEYS);
-      if (keys.length > 0 && !keys.includes(request.headers.get("X-API-Key") ?? "")) {
+      const suppliedKey = request.headers.get("X-API-Key") ?? "";
+      if (keys.length === 0 || !keys.includes(suppliedKey)) {
         return json({ error: "Unauthorized" }, 401);
       }
     }

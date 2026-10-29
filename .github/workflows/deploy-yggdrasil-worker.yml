@@ -22,7 +22,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx wrangler deploy
+      - name: Require Worker API key secret
+        env:
+          YGGDRASIL_API_KEYS: ${{ secrets.YGGDRASIL_API_KEYS }}
+        run: |
+          if [ -z "$YGGDRASIL_API_KEYS" ]; then
+            echo "YGGDRASIL_API_KEYS repository secret is required"
+            exit 1
+          fi
+      - name: Configure Worker API keys
+        working-directory: packages/yggdrasil-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          YGGDRASIL_API_KEYS: ${{ secrets.YGGDRASIL_API_KEYS }}
+        run: printf '%s' "$YGGDRASIL_API_KEYS" | npx wrangler secret put API_KEYS
+      - name: Deploy Worker
+        run: npx wrangler deploy
         working-directory: packages/yggdrasil-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
