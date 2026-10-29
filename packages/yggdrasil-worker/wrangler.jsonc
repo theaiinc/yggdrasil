@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yggdrasil-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "YGGDRASIL",
+        "class_name": "YggdrasilDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["YggdrasilDurableObject"]
+    }
+  ],
+  "vars": {
+    "LEASE_TTL_MS": "60000"
+  }
+}

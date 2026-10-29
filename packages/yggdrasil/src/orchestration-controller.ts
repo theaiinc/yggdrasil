@@ -476,13 +476,12 @@ app.post('/runners/offline', (req, res) => {
   }
 
   const runner = runners.get(runnerId)!;
-  logger.info('Runner deregistered — removing record', {
+  runner.status = 'offline';
+  logger.info('Runner marked offline — preserving record', {
     runnerId,
     name: runner.name,
     version: runner.version,
   });
-  realmRegistry.removeTemplates(runnerId);
-  runners.delete(runnerId);
   res.json({ status: 'deregistered' });
 });
 

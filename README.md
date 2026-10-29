@@ -59,6 +59,34 @@ API_KEYS=my-secret-key docker compose up
 curl -H "X-API-Key: my-secret-key" http://localhost:3000/api/runners
 ```
 
+## Cloudflare Worker deployment
+
+The repository also includes `packages/yggdrasil-worker`, a Cloudflare Worker backed by a SQLite Durable Object. Its workers.dev URL has this shape after deployment:
+
+```text
+https://yggdrasil-worker.<your-subdomain>.workers.dev
+```
+
+The Worker preserves the controller API, including `/health`, `/metrics`, runner registration/heartbeats/offline handling, runner listing, and per-runner task routes. Durable Object alarms mark runners offline when their lease expires; state survives Worker eviction.
+
+Set the API key as a Worker secret (not in `wrangler.jsonc`):
+
+```bash
+cd packages/yggdrasil-worker
+npx wrangler secret put API_KEYS
+npx wrangler deploy
+```
+
+Point Ratatoskr at the deployed Worker URL and use the same key:
+
+```bash
+YGGDRASIL_URL=https://yggdrasil-worker.<your-subdomain>.workers.dev \
+YGGDRASIL_API_KEY=my-secret-key \
+npx @theaiinc/yggdrasil-ratatoskr
+```
+
+The GitHub Actions deployment runs when Worker files change on `main`. It requires repository secrets named `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; the first deploy will remain pending or fail until those secrets are configured.
+
 ## Configuration via `.env`
 
 ```env
