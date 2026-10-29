@@ -137,4 +137,42 @@ describe.sequential("Yggdrasil Worker", () => {
       }),
     ]));
   });
+
+  it("exposes every controller route without returning 404", async () => {
+    const runnerId = `contract-runner-${Date.now()}`;
+    const sessionId = `contract-session-${Date.now()}`;
+    const realmId = `contract-realm-${Date.now()}`;
+    const routes: Array<{ method: string; path: string; body?: Record<string, unknown> }> = [
+      { method: "POST", path: "/runners/register", body: { runnerId } },
+      { method: "POST", path: "/runners/heartbeat", body: { runnerId } },
+      { method: "POST", path: `/runners/${runnerId}/request-update`, body: { version: "1.0.1" } },
+      { method: "POST", path: "/runners/update", body: { runnerIds: [] } },
+      { method: "POST", path: `/runners/${runnerId}/tasks`, body: { taskId: "contract-task", type: "test" } },
+      { method: "GET", path: `/runners/${runnerId}/tasks` },
+      { method: "PATCH", path: `/runners/${runnerId}/tasks/contract-task`, body: { status: "completed" } },
+      { method: "POST", path: "/runners/offline", body: { runnerId } },
+      { method: "GET", path: "/api/runners" },
+      { method: "GET", path: `/api/runners/${runnerId}` },
+      { method: "POST", path: "/api/v1/sessions", body: { sessionId } },
+      { method: "GET", path: "/api/v1/sessions" },
+      { method: "GET", path: `/api/v1/sessions/${sessionId}` },
+      { method: "PATCH", path: `/api/v1/sessions/${sessionId}`, body: { status: "active" } },
+      { method: "DELETE", path: `/api/v1/sessions/${sessionId}` },
+      { method: "GET", path: "/api/v1/realms" },
+      { method: "POST", path: "/api/v1/realms/register", body: { realmId } },
+      { method: "POST", path: "/api/v1/realms/heartbeat", body: { realmId } },
+      { method: "POST", path: "/api/v1/realms/deregister", body: { realmId } },
+      { method: "GET", path: `/api/v1/realms/${realmId}` },
+      { method: "PATCH", path: `/api/v1/realms/${realmId}`, body: { status: "active" } },
+      { method: "DELETE", path: `/api/v1/realms/${realmId}` },
+    ];
+
+    for (const route of routes) {
+      const response = await request(route.path, {
+        method: route.method,
+        ...(route.body ? { body: JSON.stringify(route.body) } : {}),
+      });
+      expect(response.status, `${route.method} ${route.path}`).not.toBe(404);
+    }
+  });
 });
